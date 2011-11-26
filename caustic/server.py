@@ -6,8 +6,16 @@ from database import collection
 import migrations # temporary
 from models import Instruction
 
+class IsAliveHandler(WebMessageHandler):
+    ''' This handler provides ping-like functionality, letting clients know
+    whether the server is available.
+    '''
+    def head(self):
+        self.set_status(200)
+        return self.render()
+
 class NameHandler(WebMessageHandler):
-    ''' This class handles interactions with a single instruction  by name.
+    ''' This handler provides clients a single instruction by name.
     '''
     def get(self, name):
         instruction = collection.find_one({'name' : name})
@@ -21,7 +29,7 @@ class NameHandler(WebMessageHandler):
         return self.render()
 
 class TagHandler(WebMessageHandler):
-    ''' This class handles the retrieval of instructions by tag.
+    ''' This handler provides clients an array of instructions by tag.
     '''
     def get(self, tag):
         tagged_instructions = collection.find({'tags': tag})
@@ -38,8 +46,9 @@ class TagHandler(WebMessageHandler):
         return self.render()
 
 urls = [
-        (r'^/(?P<name>\w+)+$', NameHandler),
-        (r'^/(?P<tag>\w+)/$',  TagHandler)]
+    (r'^/$', IsAliveHandler),
+    (r'^/(?P<name>\w+)+$', NameHandler),
+    (r'^/(?P<tag>\w+)/$',  TagHandler)]
 
 config = {
     'mongrel2_pair': ('ipc://127.0.0.1:9999', 'ipc://127.0.0.1:9998'),
