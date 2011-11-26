@@ -11,6 +11,7 @@ instructions = [
     {
         "name" : "property",
         "json" : json.dumps({
+            "name" : "Owner",
             "load" : "http://webapps.nyc.gov:8084/CICS/fin1/find001I",
             "method" : "post",
             "posts" : {
