@@ -1,6 +1,5 @@
 from dictshield.document        import Document
-from dictshield.fields.base     import StringField
-from dictshield.fields.compound import ListField
+from dictshield.fields     import StringField, ListField
 
 class Instruction(Document):
     name = StringField()
