@@ -122,6 +122,7 @@ instructions = [
         'name': 'acris-index',
         'json': json.dumps({
                 "description" : "Index of all property transactions for BBL in NYC excluding Staten Island.",
+                "name" : "Deeds & Mortgages",
                 "load" : "http://a836-acris.nyc.gov/Scripts/DocSearch.dll/BBLResult",
                 "cookies" : {
                     "JUMPPAGE" : "YES"
@@ -236,6 +237,7 @@ instructions = [
         'json': json.dumps({
                 "description": "Search the NYS DOS corporate entities listing using a partial search.  Requires 'searchname', returns a search results page with 0 to many pages of matching entities.",
                 "load" : "http://appext9.dos.state.ny.us/corp_public/CORPSEARCH.SELECT_ENTITY",
+                "name" : "Corporate Info",
                 "posts": {
                     "p_entity_name" : "{{Owner}}",
                     "p_name_type"   : "%25",
