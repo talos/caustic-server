@@ -20,11 +20,30 @@ instructions = [
                 "FBORO"     : "{{Borough}}",
                 "FAPTNUM"   : "{{Apt}}"
                 },
-            "then" : {
-                "name" : "Owner",
-                "find" : "<input\\s+type=\"hidden\"\\s+name=\"ownerName\\d?\"\\s+value=\"\\s*(\\w[^\"]*?)\\s*\"",
-                "replace" : "$1"
-                }
+            "then" : [
+                    {
+                        "description" : "The names of the owners",
+                        "name" : "Owner",
+                        "find" : "<input\\s+type=\"hidden\"\\s+name=\"ownerName\\d?\"\\s+value=\"\\s*(\\w[^\"]*?)\\s*\"",
+                        "replace" : "$1",
+                        "then"    : "../nys/dos-corpsearch"
+                        },
+                    {
+                        "description" : "Block number",
+                        "name"    : "Block",
+                        "find"    : "<input\\s+type=\"hidden\"\\s+name=\"q49_block_id\\d?\"\\s+value=\"(\\d+)\"",
+                        "replace" : "$1",
+                        "match"   : 0
+                        },
+                    {
+                        "description" : "Lot number",
+                        "name"    : "Lot",
+                        "find"    : "<input\\s+type=\"hidden\"\\s+name=\"q49_lot\\d?\"\\s+value=\"(\\d+)\"",
+                        "replace" : "$1",
+                        "match"   : 0
+                        },
+                    "/acris-index-all-docs"
+                    ]
             })
         },
     {
@@ -72,7 +91,7 @@ instructions = [
             })
         },
     {
-        'name': 'staten island',
+        'name': 'staten-island',
         'tags': [10302, 10303, 10310, 10306, 10307, 10308, 10309, 10312, 10301, 10304, 10305, 10314],
         'json': json.dumps({
             "extends" : "/property",
@@ -81,8 +100,224 @@ instructions = [
                 "FAPTNUM": ""
                 }
             })
+        },
+    {
+        'name': 'acris-index-all-docs',
+        'json': json.dumps({
+                "extends"     : "acris-index",
+                "description" : "Subsitutes in defaults that make acris-index grab all documents for all times (1966-present).",
+                "posts" : {
+                    "hid_selectdate": "To Current Date",
+                    "hid_datefromm" : "",
+                    "hid_datefromd" : "",
+                    "hid_datefromy" : "",
+                    "hid_datetom" : "",
+                    "hid_datetod" : "",
+                    "hid_datetoy" : "",
+                    "hid_doctype" : ""
+                    }
+                })
+        },
+    {
+        'name': 'acris-index',
+        'json': json.dumps({
+                "description" : "Index of all property transactions for BBL in NYC excluding Staten Island.",
+                "load" : "http://a836-acris.nyc.gov/Scripts/DocSearch.dll/BBLResult",
+                "cookies" : {
+                    "JUMPPAGE" : "YES"
+                    },
+                "posts" : {
+                    "hid_borough" : "{{Borough}}",
+                    "hid_borough_name" : "",
+                    "hid_block" : "{{Block}}",
+                    "hid_lot"   : "{{Lot}}",
+                    "hid_selectdate": "DR",
+                    "hid_datefromm" : "{{FromMonth}}",
+                    "hid_datefromd" : "{{FromDay}}",
+                    "hid_datefromy" : "{{FromYear}}",
+                    "hid_datetom" : "{{ToMonth}}",
+                    "hid_datetod" : "{{ToDay}}",
+                    "hid_datetoy" : "{{ToYear}}",
+                    "hid_doctype" : "{{DocType}}",
+                    "hid_doctype_name" : "",
+                    "hid_max_rows" : "10000",
+                    "hid_page" : "",
+                    "hid_ReqId" : "",
+                    "hid_SearchType" : "BBL",
+                    "hid_ISIntranet" : "N",
+                    "hid_EmployeeID" : ""
+                    },
+                "then" : {
+                    "find" : "<!--Table Begin!-->(.*?)<!--Table End-->",
+                    "match" : 0,
+                    "then" : {
+                        "extends" : "/html-row",
+                        "min"  : 2,
+                        "max"  : -1,
+                        "then" : [{
+                                "name"        : "Doc ID",
+                                "find"     : "go_detail\\('([^']+)'\\)",
+                                "replace" : "$1",
+                                "match"       : 0
+                                },{
+                                "extends" : "/acris-column",
+                                "name"    : "Reel/Pg/File",
+                                "match"   : 1
+                                },{
+                                "extends" : "/acris-column",
+                                "name"    : "CRFN",
+                                "match"   : 2
+                                },{
+                                "extends" : "/acris-column",
+                                "name"    : "Lot",
+                                "match"   : 3
+                                },{
+                                "extends" : "/acris-column",
+                                "name"    : "Partial",
+                                "match"   : 4
+                                },{
+                                "extends" : "/acris-column",
+                                "name"    : "Recorded / Filed",
+                                "match"   : 5
+                                },{
+                                "extends" : "/acris-column",
+                                "name"    : "Document Type",
+                                "match"   : 6
+                                },{
+                                "extends" : "/acris-column",
+                                "name"    : "Pages",
+                                "match"   : 7
+                                },{
+                                "extends" : "/acris-column",
+                                "name"    : "Party1",
+                                "match"   : 8
+                                },{
+                                "extends" : "/acris-column",
+                                "name"    : "Party2",
+                                "match"   : 9
+                                },{
+                                "extends" : "/acris-column",
+                                "name"    : "Party 3/ Other",
+                                "match"   : 10
+                                },{
+                                "extends" : "/acris-column",
+                                "name"    : "More Party 1/2 Names",
+                                "match"   : 11
+                                },{
+                                "extends" : "/acris-column",
+                                "name"    : "Corrected/ Remarks",
+                                "match"   : 12
+                                },{
+                                "extends" : "/acris-column",
+                                "name"    : "Doc Amount",
+                                "match"   : 13
+                                }]
+                        }
+                    }
+                })
+        },
+    {
+        'name': 'acris-column',
+        'json': json.dumps({
+                "description" : "ACRIS has a font definition for every column.",
+                "find"     : "<\\s*font[^>]*>(.*?)</\\s*font\\s*>",
+                "replace" : "$1"
+                })
+        },
+    {
+        'name': 'html-row',
+        'json': json.dumps({
+                "find"     : "<\\s*tr[^>]*>(.*?)</\\s*tr\\s*>",
+                "replace" : "$1"
+                })
+        },
+    {
+        'name': 'dos-corpsearch',
+        'json': json.dumps({
+                "description": "Search the NYS DOS corporate entities listing using a partial search.  Requires 'searchname', returns a search results page with 0 to many pages of matching entities.",
+                "load" : "http://appext9.dos.state.ny.us/corp_public/CORPSEARCH.SELECT_ENTITY",
+                "posts": {
+                    "p_entity_name" : "{{Owner}}",
+                    "p_name_type"   : "%25",
+                    "p_search_type" : "PARTIAL"
+                    },
+                "then" : [{
+                        "description" : "Keep track of how many entities were found in the search.",
+                        "name"        : "Number of matching entities",
+                        "find"        : "<p\\s+title\\s*=\\s*\"messages\">([^<]*)</p>",
+                        "match"       : 0,
+                        "replace"     : "$1"
+                        },{
+                        "description" : "Split by each entity on the search results page.",
+                        "find"        : "<a\\s+title\\s*=\\s*\"Link to entity information.*?</a>",
+                        "name"        : "entity",
+                        "then" : [{
+                                "description" : "Finds the p_nameid",
+                                "find"        : "p_nameid=(\\d+)",
+                                "name"        : "p_nameid",
+                                "replace"     : "$1",
+                                "match"       : 0
+                                },{
+                                "description" : "Finds the p_corpid",
+                                "find"        : "p_corpid=(\\d+)",
+                                "name"        : "p_corpid",
+                                "replace"     : "$1",
+                                "match"       : 0
+                                },{
+                                "description" : "Resolve the href link for each entity against the site, load the page.",
+                                "load"        : "http://appext9.dos.state.ny.us/corp_public/CORPSEARCH.ENTITY_INFORMATION?p_nameid={{p_nameid}}&p_corpid={{p_corpid}}&p_entity_name={{Owner}}&p_name_type=%25&p_search_type=PARTIAL",
+                                "then" : [{
+                                        "name"        : "Current Entity Name",
+                                        "find"        : "<th scope=\"row\">Current Entity Name:</th>[^<]*<td>([^<]*)</td>",
+                                        "replace"     : "$1"
+                                        },{
+                                        "name"        : "Initial DOS Filing Date",
+                                        "find"        : "<th scope=\"row\">Initial DOS Filing Date:</th>[^<]*<td>([^<]*)</td>",
+                                        "replace"     : "$1"
+                                        },{
+                                        "name"        : "County",
+                                        "find"        : "<th scope=\"row\">County:</th>[^<]*<td>([^<]*)</td>",
+                                        "replace"     : "$1"
+                                        },{
+                                        "name"        : "Jurisdiction",
+                                        "find"        : "<th scope=\"row\">Jurisdiction:</th>[^<]*<td>([^<]*)</td>",
+                                        "replace"     : "$1"
+                                        },{
+                                        "name"        : "Entity Type",
+                                        "find"        : "<th scope=\"row\">Entity Type:</th>[^<]*<td>([^<]*)</td>",
+                                        "replace"     : "$1"
+                                        },{
+                                        "name"        : "Current Entity Status",
+                                        "find"        : "<th scope=\"row\">Current Entity Status:</th>[^<]*<td>([^<]*)</td>",
+                                        "replace"     : "$1"
+                                        },{
+                                        "name"        : "DOS Process Address",
+                                        "find"        : "<td headers=\"c1\">(.*?)</td>",
+                                        "replace"     : "$1",
+                                        "match"       : 0
+                                        },{
+                                        "name"        : "Registered Agent",
+                                        "find"        : "<td headers=\"c1\">(.*?)</td>",
+                                        "replace"     : "$1",
+                                        "match"       : 1
+                                        },{
+                                        "name"        : "Filing Date",
+                                        "find"        : "<td class=\"FileDt\">([^<])</th>",
+                                        "replace"     : "$1"
+                                        },{
+                                        "name"        : "Name Type",
+                                        "find"        : "<td class=\"NameType\">([^<])</th>",
+                                        "replace"     : "$1"
+                                        },{
+                                        "name"        : "Entity Name",
+                                        "find"        : "<td class=\"Entity Name\">([^<])</th>",
+                                        "replace"     : "$1"
+                                        }]
+                                }]
+                        }]
+                })
         }
-]
+    ]
 
 for instruction in instructions:
     collection.save(Instruction(**instruction).to_python())

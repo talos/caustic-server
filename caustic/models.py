@@ -1,10 +1,16 @@
-from dictshield.document        import Document
-from dictshield.fields     import StringField, ListField
+from dictshield.document import Document
+
+# Depends which version of Dictshield we have.
+try:
+    from dictshield.fields.base     import StringField
+    from dictshield.fields.compound import ListField
+except ImportError:
+    from dictshield.fields import StringField, ListField
 
 class Instruction(Document):
-    name = StringField()
+    name = StringField(required = True)
     tags = ListField(StringField())
-    json = StringField()
+    json = StringField(required = True)
 
 # class Instruction(EmbeddedDocument):
 #     name        = StringField()

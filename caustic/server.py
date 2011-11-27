@@ -47,8 +47,8 @@ class TagHandler(WebMessageHandler):
 
 urls = [
     (r'^/$', IsAliveHandler),
-    (r'^/(?P<name>\w+)+$', NameHandler),
-    (r'^/(?P<tag>\w+)/$',  TagHandler)]
+    (r'^/(?P<name>[\w\s\-]+)+$', NameHandler),
+    (r'^/(?P<tag>[\w\s\-]+)/$',  TagHandler)]
 
 config = {
     'mongrel2_pair': ('ipc://127.0.0.1:9999', 'ipc://127.0.0.1:9998'),
