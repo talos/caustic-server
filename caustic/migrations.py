@@ -26,7 +26,7 @@ instructions = [
                         "name" : "Owner",
                         "find" : "<input\\s+type=\"hidden\"\\s+name=\"ownerName\\d?\"\\s+value=\"\\s*(\\w[^\"]*?)\\s*\"",
                         "replace" : "$1",
-                        "then"    : "../nys/dos-corpsearch"
+                        "then"    : "dos-corpsearch"
                         },
                     {
                         "description" : "Block number",
