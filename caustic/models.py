@@ -7,33 +7,27 @@ try:
 except ImportError:
     from dictshield.fields import StringField, ListField
 
-class Instruction(Document):
-    name = StringField(required = True)
+class User(EmbeddedDocument):
+    ''' A user who can clone, make push requests, and pull
+    instructions.
+    '''
+
+    name = StringField(required = True, uniq_field = True)
+
+class Template(Document):
+    ''' A template with a name and tags that belongs to a
+    a single user.  It is backed with a mercurial repo,
+    corresponding to the internal DB id.
+    '''
+
+    user = EmbeddedDocumentField(User, required = True )
+    name = StringField(required = True, uniq_field = True)
     tags = ListField(StringField())
+
+    private = BooleanField(default = False)
+    hidden  = BooleanField(default = False)
+
+    # This is the most recent commit to the mercurial repo
     json = StringField(required = True)
 
-# class Instruction(EmbeddedDocument):
-#     name        = StringField()
-#     tags        = ListField(StringField())
-#     description = StringField()
-#     then        = ListField(EmbeddedDocumentField(Instruction))
-
-
-# class Load(Instruction):
-#     load   = StringField() # substitutions mean invalid URLs must be
-#                            # acceptable (they could be substituted into valid
-#                            # urls)
-#     method  = StringField()
-#     posts   = DictField()
-#     headers = DictField()
-#     cookies = DictField()
-
-# class Find(Instruction, RecursiveMixin):
-#     find             = StringField()
-#     case_insensitive = BooleanField()
-#     multiline        = BooleanField()
-#     dot_matches_all  = BooleanField()
-#     replace          = BooleanField()
-#     match            = IntField()
-#     min              = IntField()
-#     max              = IntField()
+    _private_fields = [ private, deleted ]

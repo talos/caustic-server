@@ -1,8 +1,11 @@
 '''Set up database.
 '''
 
+from config  import config
 from pymongo import Connection
 
-connection = Connection('localhost', 27017)
+connection = Connection(config.mongo_host, config.mongo_port)
 db         = connection.caustic
-collection = db.instructions
+
+templates = db.templates
+users     = db.users
