@@ -7,4 +7,4 @@ def validate(request, user):
     Throws an exception if this is not true.
     '''
 
-    puts 'Warning: user validation not yet written!'
+    print 'Warning: user validation not yet written!'

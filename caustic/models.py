@@ -1,11 +1,14 @@
-from dictshield.document import Document
+from dictshield.document import Document, EmbeddedDocument
 
 # Depends which version of Dictshield we have.
 try:
-    from dictshield.fields.base     import StringField
-    from dictshield.fields.compound import ListField
+    from dictshield.fields.base     import StringField, BooleanField
+    from dictshield.fields.compound import ListField, EmbeddedDocumentField
 except ImportError:
-    from dictshield.fields import StringField, ListField
+    from dictshield.fields import StringField, \
+                                  BooleanField, \
+                                  EmbeddedDocumentField, \
+                                  ListField
 
 class User(EmbeddedDocument):
     ''' A user who can clone, make push requests, and pull
@@ -30,4 +33,4 @@ class Template(Document):
     # This is the most recent commit to the mercurial repo
     json = StringField(required = True)
 
-    _private_fields = [ private, deleted ]
+    _private_fields = [ private, hidden ]
