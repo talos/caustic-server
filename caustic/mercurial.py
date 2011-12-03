@@ -1,73 +1,102 @@
-'''
-Provide a python interface to mercurial.
-'''
+""" Class to handle single-file Mercurial repos with a single user.
+"""
 
-from hgapi import hgapi
 import os
+from hgapi import hgapi
 
 # The name of the template file within the repo.
 TEMPLATE_FILE_NAME = 'content'
 
 class CommitException(Exception):
-    ''' This exception is thrown when a commit fails.
-    '''
+    """ This exception is thrown when a commit fails.
+    """
+    pass
+
+class NoRepositoryException(Exception):
+    """ This exception is thrown when a repo does not exist.
+    """
+    pass
+
+class AlreadyExistsException(Exception):
+    """ This exception is thrown when a repo already exists.
+    """
     pass
 
 class Repository(object):
-    ''' An object to commit, pull, and push single-file Mercurial
-    repos.
-    '''
+    """ An object to commit, pull, and push single-file Mercurial repos.
+    """
 
-    def __init__(self, base_path, user, name):
-        ''' Checks base_path joined with the user and name for a repo.
+    def __init__(self, base_path, user, name, create=True):
+        """ Checks base_path joined with the user and name for a repo.
         If no repo exists there, creates it with the specified user.  Otherwise,
         works with the existing repo.
-        '''
+        """
 
-        self.path = os.path.join(base_path, user, name)
+        self.base_path = base_path
         self.user = user
-        self.file_path = os.path.join(self.path, TEMPLATE_FILE_NAME)
+        self.name = name
+        path = os.path.join(base_path, user, name)
+        self.file_path = os.path.join(path, TEMPLATE_FILE_NAME)
 
-        # Create path & repo if it doesn't exist yet.
-        if(not os.path.isdir(self.path)):
-            os.makedirs(self.path)
-            self.repo = hgapi.Repo(self.path)
-
-            # initialize repo
-            self.repo.hg_init()
-
-            # add our single file
-            with open(self.file_path, 'w') as f:
-                f.write('')
-
-            self.repo.hg_add(TEMPLATE_FILE_NAME)
-
+        if(os.path.isdir(path)):
+            self.repo = hgapi.Repo(path)
+        elif(create is True):
+            self.repo = self._create_repo(path)
         else:
-            self.repo = hgapi.Repo(self.path)
+            raise NoRepositoryException("No repo %s for user %s" % (name, user))
+
+    def _create_repo(self, path):
+        """ Initialize a new repo at `path`.
+        """
+        os.makedirs(path)
+
+        repo = hgapi.Repo(path)
+        repo.hg_init()
+        # add our single (blank) file
+        with open(self.file_path, 'w') as f:
+            f.write('')
+
+        repo.hg_add(TEMPLATE_FILE_NAME)
+        return repo
 
     def commit(self, content, message):
-        ''' Commits the specified content to this repo.
-        '''
-
+        """ Commits the specified content to this repo.
+        """
         # Truncate & write the file.
         with open(self.file_path, 'w') as f:
             f.write(content)
 
         try:
-            self.repo.hg_commit(message, user = self.user)
+            self.repo.hg_commit(message, user=self.user)
         except Exception as e:
             # hgapi returns a generic exception, which is sub-optimal.
             raise CommitException(e)
 
-    def pull(self, path, id):
-        ''' Pulls the content from the specified repo.
-        '''
-
-        raise NotImplementedError, 'Pull not yet implemented'
+    def pull(self, from_repo):
+        """ Pulls from the specified mercurial.Repository.
+        """
+        from_path = os.path.abspath(from_repo.repo.path)  # a bit hacky.
+        self.repo.hg_command('pull', from_path)
+        self.repo.hg_command('update')
 
     def get(self):
-        ''' Get the latest content from this repo.
-        '''
-
+        """ Get the latest content from this repo.
+        """
         with open(self.file_path, 'r') as f:
             return f.read()
+
+    def clone(self, user, name=None):
+        """ Clone this repo into `name` for `user`.  Returns the cloned
+        repo.  If name is unspecified, reuses the name.  Raises an
+        AlreadyExistsException if a user is cloning their own repo and
+        doesn't specify a new name.
+        """
+        if name is None:
+            if user is self.user:
+                raise AlreadyExistsException(
+                    "You must specify a new name to clone your own repo.")
+            name = self.name
+
+        cloned = Repository(self.base_path, user, name)
+        cloned.pull(self)
+        return cloned
