@@ -1,138 +1,221 @@
 #!/usr/bin/env python
 
-'''
+"""
 Caustic server.
 
 Store caustic JSON templates in little repos and let users shoot 'em round.
-'''
+"""
 
 import sys
 import json
+import uuid
 from brubeck.request_handling import Brubeck, WebMessageHandler
+from brubeck.auth import web_authenticated, UserHandlingMixin
 
 from database   import templates, users
-from validation import validate # not the best?
-from config     import config
-#from exceptions import CausticException, NoTemplateException
 from mercurial  import Repository
 from models     import Template, User
 
-class HandleCausticExceptionsMixin():
-    ''' Use this mixin with WebMessageHandler to render caustic exceptions
-    correctly.
-    '''
 
-    def error(self, e):
+class HandleCausticUserMixin(UserHandlingMixin):
+    """Use this mixin to leverage Brubeck's UserHandlingMixin.  Returns `None`
+    if there is no user.
+    """
 
-        if isinstance(e, CausticException):
-            self.set_status(e.code)
-            self.render(e.message)
-        else:
-            # TODO it would be better if we in this case hit the error(self, e)
-            # method of the mixed-in class.
-            self.unsupported()
+    def get_current_user(self):
+        """Return the user object from the database using cookie session.
+        """
+        user_id = get_cookie('session', secret=self.application.secret)
+
+        if not user_name:
+            return None
+            #raise BadSessionException()
+
+        return User.find_one(user_id)
+
 
 class IsAliveHandler(WebMessageHandler):
-    ''' This handler provides ping-like functionality, letting clients know
+    """This handler provides ping-like functionality, letting clients know
     whether the server is available.
-    '''
+    """
     def head(self):
         self.set_status(200)
         return self.render()
 
-class NameHandler(WebMessageHandler, HandleCausticExceptionsMixin):
-    ''' This handler provides clients access to a single template by name.
-    '''
-    def get(self, user, name):
-        ''' Get the JSON of a single template.
-        '''
 
-        template = find_template(user, name)
-        self.set_body(template.json)
+class SignUpHandler(WebMessageHandler, HandleCausticExceptionsMixin):
+    """This handler lets users sign up.  Takes argument `user`.  The user is
+    logged in after signing up.
+    """
 
+    def post(self):
+        print "Warning: signup not yet implemented."
+
+        user_name = self.get_argument('user')
+
+        if not self.get_argument('user'):
+            return self.render_error(400, 'Must specify user name to sign up')
+
+        if users.find_one({'name': user_name}).count():
+            return self.render_error(400,
+                                     "User name %s is already in use."
+                                     % user_name)
+
+        user = User(name=user_name)
+        users.save(user.to_python())
+
+        self.set_cookie('session', user._id, )
         return self.render()
 
+
+class DeleteAccountHandler(WebMessageHandler, HandleCausticExceptionsMixin):
+    """This handler lets a user delete his/her account.  This does not delete
+    their templates, but will orphan them.
+    """
+
+    @authenticated
+    def post(self):
+        users.remove(self.current_user._id)
+
+
+class LogInHandler(WebMessageHandler, HandleCausticExceptionsMixin):
+    """This handler lets users log in.
+    """
+
+    def post(self):
+        print "Warning: login not yet implemented."
+
+        user_name = self.get_argument('user')
+        if user_name:
+            user = users.find_one({'name': user_name})
+            if user:
+                self.set_cookie('session', user._id,
+                                secret=self.application.secret)
+                self.render()
+            else:
+                self.render_error(400, "User %s does not exist" % user_name)
+        else:
+            self.render_error(400, "User not specified")
+
+
+class LogOutHandler(WebMessageHandler):
+    """This handler lets users log out.
+    """
+
+    @authenticated
+    def post(self):
+        self.delete_cookie('session')
+
+
+class NameHandler(WebMessageHandler,
+                  HandleCausticExceptionsMixin,
+                  UserHandlingMixin):
+    """This handler provides clients access to a single template by name.
+    """
+
+    def get(self, user, name):
+        """Get the JSON of a single template.
+        """
+
+        user_id = users.find_one({'name': user})
+        template = templates.find_one({
+                'user_id': user_id,
+                'name': name,
+                'hidden': False})
+        if template:
+            self.set_body(template.json)
+            return self.render()
+        else:
+            return self.render_error(404, "No template")
+
+    @authenticated
     def put(self, user, name):
-        ''' Update a single template.
-        '''
+        """Update a single template, creating it if it doesn't exist.
+        """
 
-        validate(self, user)
+        if not user is self.current_user:
+            return self.render_error(400, "You cannot modify someone else's"
+                                          "template.")
 
-        user = users.find_one({'name' : user})
         tags = json.loads(self.get_argument('tags'), '[]') # load json array
-        template_json = self.get_argument('json') # leave json template as string
-        if self.get_argument('commit') is None:
-            commit = config['default_commit_message']
-        else:
-            commit = self.get_argument('commit')
+        json = self.get_argument('json') # leave json template as string
+        commit = self.get_argument('commit', self.application.default_commit)
 
-        template = _find_template(user, name)
-
-        # Existing template.  Modify it.
-        if(template):
+        if json:
+            template = templates.find_one({
+                    'user_id': self.current_user._id, 'name': name
+                    })
+        if template: # modify existing template
             template.tags = tags
-            template.json = template_json
-            verb = 'Updated'
-        else:
-            Template({'json': template_json, 'tags': tags, 'user': user })
-            verb = 'Created'
+            template.json = json
+        else: # new template
+            template = Template(tags=tags,
+                                json=json,
+                                user_id=self.current_user._id)
 
-        repo = Repository(config['mercurial_dir'], user.name, template.name)
-        repo.commit(json, 'Commit')
+        templates.save(template.to_python())
 
-        self.set_body("%s template %s/%s" % verb, user.name, name)
-        self.render()
+        repo = Repository(self.application.mercurial_dir,
+                          self.current_user.name,
+                          template.name)
+        repo.commit(json, commit)
+        return self.render()
 
+    @authenticated
     def delete(self, user, name):
-        ''' Hide a single template from view.  Does not actually wipe the
-        repo, but sets a 'hidden' flag in the database.
-        '''
+        """Hide a single template from view.  Does not actually wipe the
+        repo, but sets a 'hidden' flag for the template.
+        """
 
-        validate(self, user)
-        template = _get_visible_template(user, name)
+        if not user is self.current_user:
+            return self.render_error(400, "You cannot delete someone else's"
+                                     " template")
+
+        template = Template(**templates.find_one({
+                'user_id': self.current_user._id,
+                'name': name}))
+        if not template:
+            return self.render_error(404, "No template")
+
         template.hidden = True
-        templates.save(template)
+        templates.save(template.to_python())
 
-        self.set_body("Deleted %s/%s" % user, name)
+        self.set_body("Deleted %s/%s" % (self.current_user, name))
         self.render()
 
-    def _find_template(self, user, name):
-        ''' Find a single template by user and name.  Returns null if the
-        template does not exist.  Returns templates even if they are hidden.
-        '''
-        return Template(**templates.find_one({ 'user' : user, 'name' : name }))
-
-    def _get_visible_template(self, user, name):
-        ''' Find a single template by user and name.  Throws an exception if
-        not found, or if the template is hidden.
-        '''
-
-        if(template):
-            if(template.hidden is False):
-                return template
-
-        raise NoTemplateException(user, name)
 
 class TagHandler(WebMessageHandler, HandleCausticExceptionsMixin):
-    ''' This handler provides clients an array of templates by tag.
-    '''
+    """This handler provides clients an array of templates by tag.
+    """
     def get(self, user, tag):
-        tagged_templatess = templates.find({'tags': tag})
+        tagged_templates = templates.find({'tags': tag})
 
-        if tagged_templates.count() is 0:
-            self.set_body("No templates with tag '%s'" % tag,
-                          status_code=404)
-        else:
+        if tagged_templates.count(): # TODO len() doesn't work
             json = '[' + ','.join([
                     Template(**template).json
                     for template in tagged_templates]) + ']'
             self.set_body(json)
+            return self.render()
+        else:
+            return self.render_error(404,
+                                     "User %s has no templates with tag '%s'"
+                                     % (user, tag))
 
-        return self.render()
+config = {
+    'secret': str(uuid.uuid4()), # A secret set for encoing cookies at
+                                 # runtime.
+    'login_url': r'^/login',
+    'default_commit': 'committed',
+    'mercurial_dir': 'templates'
+}
 
 urls = [
     (r'^/$', IsAliveHandler),
-    (r'^/(?P<user>[\w\-]+)/(?P<name>[\w\-]+)+$', NameHandler),
+    (r'^/signup$', SignUpHandler),
+    (r'^/die$', DeleteAccountHandler),
+    (config['login_url'], LogInHandler),
+    (r'^/logout', LogOutHandler),
+    (r'^/(?P<user>[\w\-]+)/(?P<name>[\w\-]+)$', NameHandler),
     (r'^/(?P<user>[\w\-]+)/(?P<tag>[\w\-]+)/$',  TagHandler)]
 config['handler_tuples'] = urls
 
