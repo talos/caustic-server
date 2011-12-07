@@ -110,6 +110,6 @@ class TestServer(unittest.TestCase):
         self.assertEqual(200, r.status_code)
         self.assertEqual(data['json'], r.content)
 
-# Priomitive runner!
+# Primitive runner!
 if __name__ == '__main__':
     unittest.main()
