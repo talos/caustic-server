@@ -11,11 +11,6 @@ import subprocess
 
 HOST = "http://localhost:6767"
 
-def random_string(length):
-    """Generate a random string of specified length.
-    """
-    base64.urlsafe_b64encode(os.urandom(length))
-
 
 class TestServer(unittest.TestCase):
 
@@ -36,7 +31,8 @@ class TestServer(unittest.TestCase):
         """Sign up `user`, while keeping track of the signup for later cleanup.
         """
         self.created_accounts.append(user)
-        return self.s.post("%s/signup" % HOST, data={'user': user})
+        r = self.s.post("%s/signup" % HOST, data={'user': user})
+        return r
 
     def _login(self, user):
         """Login `user`, return the response object.
@@ -112,8 +108,8 @@ class TestServer(unittest.TestCase):
 
         r = self.s.get("%s/jacobs/life-n-death" % HOST)
         self.assertEqual(200, r.status_code)
-        self.assertEqual(data['json'], json.loads(r.content))
+        self.assertEqual(data['json'], r.content)
 
-# Primitive runner!
+# Priomitive runner!
 if __name__ == '__main__':
     unittest.main()
