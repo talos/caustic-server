@@ -3,3 +3,4 @@
 *.db
 run/*
 log/*
+templates/*

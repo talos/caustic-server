@@ -1,46 +1,58 @@
-""" Test server.py.  Make sure that a caustic-server instance is running before
-trying this.
+""" Test server.py.  Restarts caustic server each time, but you are
+responsible for having mongrel and mongodb online.
 """
 
 import unittest
-# import httplib
-# import urllib
 import os
 import base64
 import requests
 import json
+import subprocess
 
-HOST = "localhost"
-PORT = 6767
+HOST = "http://localhost:6767"
 
 def random_string(length):
     """Generate a random string of specified length.
     """
     base64.urlsafe_b64encode(os.urandom(length))
 
+
 class TestServer(unittest.TestCase):
 
-    def _signup(self, user):
-        """Sign up `user`, while keeping track of the sign up for later cleanup.
+    @classmethod
+    def setUpClass(cls):
+        """Start up the caustic server app.
         """
-        self.created_accounts.push(user)
-        return r.post("%s/signup" % HOST, data={'user' : user})
+        cls.proc = subprocess.Popen('python caustic/server.py', shell=True)
+
+    @classmethod
+    def tearDownClass(cls):
+        """Shut down the caustic server app.
+        """
+        cls.proc.terminate()
+        cls.proc.wait()
+
+    def _signup(self, user):
+        """Sign up `user`, while keeping track of the signup for later cleanup.
+        """
+        self.created_accounts.append(user)
+        return self.s.post("%s/signup" % HOST, data={'user': user})
 
     def _login(self, user):
         """Login `user`, return the response object.
         """
-        return r.post("%s/login" % HOST, data={'user' : user})
+        return self.s.post("%s/login" % HOST, data={'user': user})
 
     def _logout(self):
         """Log out, return the response object.
         """
-        return r.post("%s/logout" % HOST)
-
-    def _die(self):
-        return r.post("%s/die" % HOST)
+        return self.s.post("%s/logout" % HOST, data='')
 
     def setUp(self):
+        """Keep track of created accounts and session.
+        """
         self.created_accounts = []
+        self.s = requests.Session()
 
     def tearDown(self):
         """Destroy any created accounts.
@@ -48,57 +60,59 @@ class TestServer(unittest.TestCase):
         for user in self.created_accounts:
             self._logout()
             self._login(user)
-            self._die()
+            self.s.post("%s/die" % HOST)
 
     def test_signup(self):
-        """Test signing up.
+        """Test signing up.  We should have logged in after signing up.
         """
-        r = self.assertEqual(200, self._signup('corbusier'))
+        r = self._signup('corbusier')
+        self.assertEqual(204, r.status_code)
+        self.assertTrue('session' in self.s.cookies)
+        self.assertFalse(self.s.cookies['session'] == '')
 
     def test_login(self):
         """Test logging in.
         """
         self._signup('mies')
-        r = self.assertEqual(200, self._login('mies'))
-        self.assertEqual(200, r.status)
-        self.assertTrue('session' in r.cookies)
+        self._logout()
+        r =  self._login('mies')
+        self.assertEqual(204, r.status_code)
+        self.assertTrue('session' in self.s.cookies)
+        self.assertFalse(self.s.cookies['session'] == '')
 
     def test_logout(self):
         """Test logging out.
         """
         self._signup('vitruvius')
-        self._login('vitruvius')
-        self._login('talos')
         r = self._logout()
-        self.assertEqual(200, r.status)
-        self.assertFalse('session' in r.cookies)
+        self.assertEqual(204, r.status_code)
+        self.assertTrue('session' in self.s.cookies)
+        self.assertTrue(self.s.cookies['session'] == '')
 
     def test_nonexistent(self):
         """ Test getting a 404.
         """
-        r = requests.get("%s/%s/%s" % (HOST, 'talos', 'nope'))
-        self.assertEqual(404, r.status)
+        r = self.s.get("%s/talos/nope" % HOST)
+        self.assertEqual(404, r.status_code)
 
     def test_create_template(self):
         """ Create a template on the server using HTTP PUT.
         """
-        name = random_string(10)
+        self._signup('fuller')
         data = { 'json': json.dumps({"load":"http://www.google.com"}) }
-        r = requests.put("%s/%s/%s" % (HOST, 'talos', name), data=data)
-
-        self.assertEqual(200, r.status)
-        #self.assertEqual("Created template %s/%s" % ('talos', random_string), r.content)
+        r = self.s.put("%s/fuller/manhattan-bubble" % HOST, data=data)
+        self.assertEqual(204, r.status_code)
 
     def test_get_template(self):
         """ Get a template on the server using HTTP GET.
         """
-        name = random_string(10)
+        self._signup('jacobs')
         data = { 'json': json.dumps({"load":"http://www.google.com/"}) }
-        requests.put("%s/%s/%s" % (HOST, 'talos', name), data=data)
+        self.s.put("%s/jacobs/life-n-death" % HOST, data=data)
 
-        r = requests.get("%s/%s/%s" % (HOST, 'talos', name))
-        self.assertEqual(200, r.status)
-        self.assertEqual({"load":"http://www.google.com"}, json.loads(r.content))
+        r = self.s.get("%s/jacobs/life-n-death" % HOST)
+        self.assertEqual(200, r.status_code)
+        self.assertEqual(data['json'], json.loads(r.content))
 
 # Primitive runner!
 if __name__ == '__main__':

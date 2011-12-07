@@ -1,20 +1,24 @@
 from dictshield.document import Document, EmbeddedDocument
 
 # Depends which version of Dictshield we have.
-try:
-    from dictshield.fields.base     import StringField, BooleanField
-    from dictshield.fields.compound import ListField
-except ImportError:
-    from dictshield.fields import StringField, \
-                                  BooleanField, \
-                                  ListField
+# try:
+#     from dictshield.fields.base     import StringField, BooleanField
+#     from dictshield.fields.compound import ListField
+# except ImportError:
+#     from dictshield.fields import StringField, \
+#                                   BooleanField, \
+#                                   ListField
+
+from dictshield.fields.base import StringField, BooleanField
+from dictshield.fields.compound import ListField
+#from dictshield.fields.mongo import ObjectIdField
 
 class User(Document):
     ''' A user who can clone, make push requests, and pull
     instructions.
     '''
 
-    name = StringField(required=True, uniq_field=True)
+    name = StringField(required=True, id_field=True)
 
 class Template(Document):
     ''' A template with a name and tags that belongs to a
@@ -22,7 +26,7 @@ class Template(Document):
     corresponding to the internal DB id.
     '''
 
-    user_id = StringField(User, required=True)
+    owner = StringField(required=True)
     name = StringField(required=True)
     tags = ListField(StringField())
 
