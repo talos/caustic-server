@@ -21,13 +21,8 @@ class NoRepositoryException(Exception):
 
 
 class AlreadyExistsException(Exception):
-    """This exception is thrown when a repo already exists.
-    """
-    pass
-
-
-class NoNameException(Exception):
-    """This exception is thrown when a repo has no name.
+    """This exception is thrown when a repo already exists with the
+    same name and owner.
     """
     pass
 
@@ -95,20 +90,14 @@ class Repository(object):
         """
         return open(self.file_path, 'r').read()
 
-    def clone(self, user, name=None):
+    def clone(self, user, name):
         """Clone this repo into `name` for `user`.  Returns the cloned
-        repo.  If name is unspecified, reuses the name.  Raises an
-        AlreadyExistsException if a user is cloning their own repo and
-        doesn't specify a new name.
+        repo.  Raises an AlreadyExistsException if a user clones their
+        own repo and doesn't specify a new name.
         """
-        if (user is self.owner) and ((name is self.name) or (name is None)):
+        if (user == self.owner) and (name == self.name):
             raise AlreadyExistsException("You must specify a new name"
                                          " to clone your own repo.")
-        else:
-            name = self.name
-
-        if not name:
-            raise NoNameException()
 
         cloned = Repository(self.base_path, user, name)
         cloned.pull(self)

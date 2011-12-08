@@ -79,15 +79,15 @@ class TestMercurialRepository(unittest.TestCase):
         aristotle = Repository(TEST_DIR, 'aristotle', 'ideas')
         aristotle.commit('foo', '300BC')
 
-        ayn_rand = aristotle.clone('ayn_rand')
+        ayn_rand = aristotle.clone('ayn_rand', 'ideas')
         self.assertEqual('foo', ayn_rand.get())
 
     def test_clone_self_fails(self):
-        """Cloning repo by same user fails if no name is specified.
+        """Cloning repo by same user fails if same name specified.
         """
         repo = Repository(TEST_DIR, 'baudrillard', 'self')
         with self.assertRaises(AlreadyExistsException):
-            repo.clone('baudrillard')
+            repo.clone('baudrillard', 'self')
 
     def test_clone_self_with_different_name(self):
         """Cloning repo by same user works if different name is specified.
