@@ -99,8 +99,8 @@ class TestServer(unittest.TestCase):
         r = self.s.put("%s/fuller/manhattan-bubble" % HOST, data=data)
         self.assertEqual(204, r.status_code)
 
-    def test_get_template(self):
-        """ Get a template on the server using HTTP GET.
+    def test_get_template_logged_in(self):
+        """ Get a template on the server using HTTP GET while logged in.
         """
         self._signup('jacobs')
         data = { 'json': json.dumps({"load":"http://www.google.com/"}) }
@@ -109,6 +109,115 @@ class TestServer(unittest.TestCase):
         r = self.s.get("%s/jacobs/life-n-death" % HOST)
         self.assertEqual(200, r.status_code)
         self.assertEqual(data['json'], r.content)
+
+    def test_get_template_not_logged_in(self):
+        """ Get a template on the server using HTTP GET while not logged in.
+        """
+        self._signup('jacobs')
+        data = { 'json': json.dumps({"load":"http://www.google.com/"}) }
+        self.s.put("%s/jacobs/life-n-death" % HOST, data=data)
+        self._logout()
+
+        r = self.s.get("%s/jacobs/life-n-death" % HOST)
+        self.assertEqual(200, r.status_code)
+        self.assertEqual(data['json'], r.content)
+
+    def test_update_template_json(self):
+        """ Update a template using HTTP PUT.
+        """
+        self._signup('moses')
+        data = { 'json': json.dumps({"load":"http://www.google.com/"}) }
+        self.s.put("%s/moses/bqe" % HOST, data=data)
+
+        data = { 'json': json.dumps({"load":"http://www.nytimes.com/"}) }
+        self.s.put("%s/moses/bqe" %HOST, data=data)
+
+        r = self.s.get("%s/moses/bqe" % HOST)
+        self.assertEqual(200, r.status_code)
+        self.assertEqual(data['json'], r.content)
+
+    def test_get_templates_by_tag(self):
+        """ Get several templates with one tag.  Returns an array of
+        relative links to the templates.
+        """
+        self._signup('trog-dor')
+        burning = {
+            'json': json.dumps({"load":"http://www.burning.com/"}),
+            'tags': ['burnination', 'wonton destruction']
+            }
+        self.s.put("%s/trog-dor/burning" % HOST, data=villagers)
+
+        pillaging = {
+            'json': json.dumps({"load":"http://www.pillaging.com/"}),
+            'tags': ['theft', 'burnination']
+            }
+        self.s.put("%s/trog-dor/pillaging" %HOST, data=pitchforks)
+
+        self._logout()
+
+        r = self.s.get("%s/trog-dor/tagged/burnination" % HOST)
+        self.assertEqual(200, r.status_code)
+        self.assertEqual('["/trog-dor/burning","/trog-dor/pillaging"]',
+                         r.content)
+
+    def test_get_nonexistent_tag(self):
+        """Get templates for nonexistent tag.  Returns an empty array.
+        """
+        self._signup('vicious')
+        self._logout()
+
+        r = self.s.get("%s/vicious/tagged/erudite")
+        self.assertEqual(200, r.status_code)
+        self.assertEqual('[]', r.content)
+
+    def test_clone_template(self):
+        """One user clones another user's template.  Should keep JSON and tags.
+        """
+        self._signup('muddy')
+        data = {'json':json.dumps('{"loads":"http://en.wikipedia.org/"}'),
+                'tags':['music', 'guitar']}
+        self.s.put("%s/muddy/delta-blues" % HOST, data=data)
+        self._logout()
+
+        self._signup('crapton')
+        r = self.s.post("%s/muddy/delta-blues/clone" % HOST)
+        self.assertEqual(204, r.status_code)
+        self._logout()
+
+        r = self.s.get("%s/crapton/delta-blues" % HOST)
+        self.assertEqual(200, r.status_code)
+        self.assertEqual(data['json'], r.content)
+
+        r = self.s.get("%s/crapton/tagged/guitar" % HOST)
+        self.assertEqual(200, r.status_code)
+        self.assertEqual('["../delta-blues"]', r.content)
+
+    def test_pull_template(self):
+        """One user pulls another user's template after cloning it.
+        Should replace the current template json with that of the
+        pulled template.
+        """
+        self._signup('barrett')
+        data = {'json':json.dumps('{"loads":"http://www.saucerful.com/"}')}
+        self.s.put("%s/barrett/saucerful" % HOST)
+        self._logout()
+
+        self._signup('gilmour')
+        self.s.post("%s/barret/saucerful/clone" % HOST)
+        self._logout()
+
+        self._login('barrett')
+        data = {'json':json.dumps('{"loads":"http://www.jugband.com/"}')}
+        self.s.put("%s/barrett/saucerful" % HOST)
+        self._logout()
+
+        self._login('gilmour')
+        r = self.s.post("%s/gilmour/saucerful/pull/barrett/saucerful" % HOST)
+        self.assertEqual(204, r.status_code)
+        r = self.s.get("%s/gilmour/saucerful" % HOST)
+        self.assertEqual(200, r.status_code)
+        self.assertEqual('{"loads":"http://www.jugband.com/"}', r.content)
+
 
 # Primitive runner!
 if __name__ == '__main__':

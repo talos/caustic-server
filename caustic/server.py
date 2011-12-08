@@ -87,7 +87,7 @@ class TemplateMixin():
         template exists, None otherwise.
         """
         template = self.db_conn.templates.find_one({
-                'owner_id': owner.id,
+                'owner': owner,
                 'name': name,
                 'deleted': False})
         return Template(**template) if template else None
@@ -99,9 +99,18 @@ class TemplateMixin():
         """
         return [Template(**template)
                 for template in self.db_conn.templates.find({
-                    'owner_id': owner.id,
+                    'owner': owner,
                     'tags': tag,
                     'deleted': False})]
+
+    def get_repo(self, template):
+        """Return the mercurial repo for the DictShield template `template`.
+        Will create this repo if it doesn't already exist.
+        """
+        return Repository(config['mercurial_dir'],
+                          str(template.owner.id),
+                          str(template.id))
+
 
     def persist_template(self, template):
         """Persist the DictShield `template` to the DB.  returns None.
@@ -239,14 +248,11 @@ class NameHandler(WebMessageHandler, UserMixin, TemplateMixin):
                 name=name,
                 tags=tags,
                 json=json_template,
-                owner_id=str(self.current_user.id))
+                owner=current_user)
 
         self.persist_template(template)
 
-        # This will create the repo if it doesn't already exist.
-        repo = Repository(config['mercurial_dir'],
-                          str(self.current_user.id),
-                          str(template.id))
+        repo = self.get_repo(template)
         repo.commit(json_template, commit)
 
         return self.render(status_code=204)
@@ -272,8 +278,28 @@ class NameHandler(WebMessageHandler, UserMixin, TemplateMixin):
         return self.render(status_code=204)
 
 
+class CloneHandler(WebMessageHandler, UserMixin, TemplateMixin):
+    """This handler clones an existing repo for the logged in user,
+    with the same name.
+    """
+    @authenticated
+    def post(self, owner_name, name):
+        template = self.get_template(self.get_user(owner_name), name)
+        if not template:
+            self.set_body('Template %s/%s does not exist.' % (owner_name, name))
+            return self.render(status_code=404)
+
+        repo_to_clone = self.get_repo(template)
+
+        template.id = None # Force mongo to create a new template.
+        self.persist_template(template) # This assigns a new ID.
+
+        repo_to_clone.clone(self.current_user.id, template.id)
+        return self.render(status_code=204)
+
+
 class TagHandler(WebMessageHandler, UserMixin, TemplateMixin):
-    """This handler provides clients an array of templates by tag.
+    """This handler serves an array of template links by tag.
     """
     def get(self, owner_name, tag):
         owner = self.get_user(owner_name)
@@ -281,17 +307,11 @@ class TagHandler(WebMessageHandler, UserMixin, TemplateMixin):
             self.set_body('User %s does not exist.' % owner_name)
             return self.render(status_code=404)
 
-        tagged_templates = self.get_tagged_templates(tag)
+        tagged_templates = self.get_tagged_templates(owner, tag)
 
-        if len(tagged_templates):
-            self.set_body(
-                json.dumps(
-                    [template.json for template in tagged_templates]))
-            return self.render(status_code=200)
-        else:
-            self.set_body('User %s has no templates with tag "%s"'
-                          % (owner.name, tag))
-            return self.render(status_code=404)
+        self.set_body(json.dumps([
+                    "../%s" % template.name for template in tagged_templates]))
+        return self.render(status_code=200)
 
 
 urls = [
@@ -301,7 +321,9 @@ urls = [
     (config['login_url'], LogInHandler),
     (r'^/logout', LogOutHandler),
     (r'^/(?P<owner_name>[\w\-]+)/(?P<name>[\w\-]+)$', NameHandler),
-    (r'^/(?P<owner_name>[\w\-]+)/(?P<tag>[\w\-]+)/$',  TagHandler)]
+    (r'^/(?P<owner_name>[\w\-]+)/(?P<name>[\w\-]+)/clone$',  CloneHandler),
+    (r'^/(?P<owner_name>[\w\-]+)/(?P<name>[\w\-]+)/pull/(?P<from_owner_name>[\w\-]+)/(?P<from_name>[\w\-]+)$',  PullHandler),
+    (r'^/(?P<owner_name>[\w\-]+)/tagged/(?P<tag>[\w\-]+)$',  TagHandler)]
 
 # Add handler tuples to the imported config.
 config['handler_tuples'] = urls
