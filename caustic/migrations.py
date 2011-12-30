@@ -13,6 +13,8 @@ instructions = [
         "json" : json.dumps({
             "name" : "Owner",
             "load" : "http://webapps.nyc.gov:8084/CICS/fin1/find001I",
+            "description" : {
+                    "about": "Load owner names from DoF." },
             "method" : "post",
             "posts" : {
                 "FHOUSENUM" : "{{Number}}",
@@ -22,23 +24,29 @@ instructions = [
                 },
             "then" : [
                     {
-                        "description" : "The names of the owners",
+                        "description" : {
+                            "visibility": "public",
+                            "about": "The names of the owners" },
                         "name" : "Owner",
                         "find" : "<input\\s+type=\"hidden\"\\s+name=\"ownerName\\d?\"\\s+value=\"\\s*(\\w[^\"]*?)\\s*\"",
                         "replace" : "$1",
                         "then"    : "/dos-corpsearch"
                         },
                     {
-                        "description" : "Block number",
-                        "name"    : "Block",
-                        "find"    : "<input\\s+type=\"hidden\"\\s+name=\"q49_block_id\\d?\"\\s+value=\"(\\d+)\"",
+                        "name"    : "Borough",
+                        "find"    : "<input\\s+type=\"hidden\"\\s+name=\"q49_boro\"\\s+value=\"(\\d+)\"",
                         "replace" : "$1",
                         "match"   : 0
                         },
                     {
-                        "description" : "Lot number",
+                        "name"    : "Block",
+                        "find"    : "<input\\s+type=\"hidden\"\\s+name=\"q49_block_id\"\\s+value=\"(\\d+)\"",
+                        "replace" : "$1",
+                        "match"   : 0
+                        },
+                    {
                         "name"    : "Lot",
-                        "find"    : "<input\\s+type=\"hidden\"\\s+name=\"q49_lot\\d?\"\\s+value=\"(\\d+)\"",
+                        "find"    : "<input\\s+type=\"hidden\"\\s+name=\"q49_lot\"\\s+value=\"(\\d+)\"",
                         "replace" : "$1",
                         "match"   : 0
                         },
@@ -178,11 +186,13 @@ instructions = [
                                 "match"   : 4
                                 },{
                                 "extends" : "/acris-column",
+                                "description": { "visibility": "public" },
                                 "name"    : "Recorded / Filed",
                                 "match"   : 5
                                 },{
                                 "extends" : "/acris-column",
                                 "name"    : "Document Type",
+                                "description": { "visibility": "public" },
                                 "match"   : 6
                                 },{
                                 "extends" : "/acris-column",
@@ -191,10 +201,12 @@ instructions = [
                                 },{
                                 "extends" : "/acris-column",
                                 "name"    : "Party1",
+                                "description": { "visibility": "public" },
                                 "match"   : 8
                                 },{
                                 "extends" : "/acris-column",
                                 "name"    : "Party2",
+                                "description": { "visibility": "public" },
                                 "match"   : 9
                                 },{
                                 "extends" : "/acris-column",
@@ -211,6 +223,7 @@ instructions = [
                                 },{
                                 "extends" : "/acris-column",
                                 "name"    : "Doc Amount",
+                                "description": { "visibility": "public" },
                                 "match"   : 13
                                 }]
                         }
@@ -235,7 +248,8 @@ instructions = [
     {
         'name': 'dos-corpsearch',
         'json': json.dumps({
-                "description": "Search the NYS DOS corporate entities listing using a partial search.  Requires 'searchname', returns a search results page with 0 to many pages of matching entities.",
+                "description": {
+                    "about": "Search the NYS DOS corporate entities listing using a partial search.  Requires {{Owner}}, returns a search results page with 0 to many pages of matching entities." },
                 "load" : "http://appext9.dos.state.ny.us/corp_public/CORPSEARCH.SELECT_ENTITY",
                 "name" : "Corporate Info",
                 "posts": {
@@ -244,74 +258,90 @@ instructions = [
                     "p_search_type" : "PARTIAL"
                     },
                 "then" : [{
-                        "description" : "Keep track of how many entities were found in the search.",
+                        "description" : {
+                            "about": "Keep track of how many entities were found in the search." },
                         "name"        : "Number of matching entities",
                         "find"        : "<p\\s+title\\s*=\\s*\"messages\">([^<]*)</p>",
                         "match"       : 0,
                         "replace"     : "$1"
                         },{
-                        "description" : "Split by each entity on the search results page.",
+                        "description" : {
+                            "about": "Split by each entity on the search results page." },
                         "find"        : "<a\\s+title\\s*=\\s*\"Link to entity information.*?</a>",
                         "name"        : "entity",
                         "then" : [{
-                                "description" : "Finds the p_nameid",
+                                "description" : {
+                                    "about": "Finds the p_nameid" },
                                 "find"        : "p_nameid=(\\d+)",
                                 "name"        : "p_nameid",
                                 "replace"     : "$1",
                                 "match"       : 0
                                 },{
-                                "description" : "Finds the p_corpid",
+                                "description" : {
+                                    "about": "Finds the p_corpid" },
                                 "find"        : "p_corpid=(\\d+)",
                                 "name"        : "p_corpid",
                                 "replace"     : "$1",
                                 "match"       : 0
                                 },{
-                                "description" : "Resolve the href link for each entity against the site, load the page.",
+                                "description" : {
+                                    "about": "Resolve the href link for each entity against the site, load the page." },
                                 "load"        : "http://appext9.dos.state.ny.us/corp_public/CORPSEARCH.ENTITY_INFORMATION?p_nameid={{p_nameid}}&p_corpid={{p_corpid}}&p_entity_name={{Owner}}&p_name_type=%25&p_search_type=PARTIAL",
                                 "then" : [{
                                         "name"        : "Current Entity Name",
+                                        "description" : { "visibility": "public" },
                                         "find"        : "<th scope=\"row\">Current Entity Name:</th>[^<]*<td>([^<]*)</td>",
                                         "replace"     : "$1"
                                         },{
                                         "name"        : "Initial DOS Filing Date",
+                                        "description" : { "visibility": "public" },
                                         "find"        : "<th scope=\"row\">Initial DOS Filing Date:</th>[^<]*<td>([^<]*)</td>",
                                         "replace"     : "$1"
                                         },{
                                         "name"        : "County",
+                                        "description" : { "visibility": "public" },
                                         "find"        : "<th scope=\"row\">County:</th>[^<]*<td>([^<]*)</td>",
                                         "replace"     : "$1"
                                         },{
                                         "name"        : "Jurisdiction",
+                                        "description" : { "visibility": "public" },
                                         "find"        : "<th scope=\"row\">Jurisdiction:</th>[^<]*<td>([^<]*)</td>",
                                         "replace"     : "$1"
                                         },{
                                         "name"        : "Entity Type",
+                                        "description" : { "visibility": "public" },
                                         "find"        : "<th scope=\"row\">Entity Type:</th>[^<]*<td>([^<]*)</td>",
                                         "replace"     : "$1"
                                         },{
                                         "name"        : "Current Entity Status",
+                                        "description" : { "visibility": "public" },
                                         "find"        : "<th scope=\"row\">Current Entity Status:</th>[^<]*<td>([^<]*)</td>",
                                         "replace"     : "$1"
                                         },{
                                         "name"        : "DOS Process Address",
+                                        "description" : { "visibility": "public" },
                                         "find"        : "<td headers=\"c1\">(.*?)</td>",
                                         "replace"     : "$1",
                                         "match"       : 0
                                         },{
                                         "name"        : "Registered Agent",
+                                        "description" : { "visibility": "public" },
                                         "find"        : "<td headers=\"c1\">(.*?)</td>",
                                         "replace"     : "$1",
                                         "match"       : 1
                                         },{
                                         "name"        : "Filing Date",
+                                        "description" : { "visibility": "public" },
                                         "find"        : "<td class=\"FileDt\">([^<])</th>",
                                         "replace"     : "$1"
                                         },{
                                         "name"        : "Name Type",
+                                        "description" : { "visibility": "public" },
                                         "find"        : "<td class=\"NameType\">([^<])</th>",
                                         "replace"     : "$1"
                                         },{
                                         "name"        : "Entity Name",
+                                        "description" : { "visibility": "public" },
                                         "find"        : "<td class=\"Entity Name\">([^<])</th>",
                                         "replace"     : "$1"
                                         }]
