@@ -145,13 +145,13 @@ class TestServer(unittest.TestCase):
             'json': json.dumps({"load":"http://www.burning.com/"}),
             'tags': ['burnination', 'wonton destruction']
             }
-        self.s.put("%s/trog-dor/burning" % HOST, data=villagers)
+        self.s.put("%s/trog-dor/burning" % HOST, data=burning)
 
         pillaging = {
             'json': json.dumps({"load":"http://www.pillaging.com/"}),
             'tags': ['theft', 'burnination']
             }
-        self.s.put("%s/trog-dor/pillaging" %HOST, data=pitchforks)
+        self.s.put("%s/trog-dor/pillaging" %HOST, data=pillaging)
 
         self._logout()
 
@@ -166,7 +166,7 @@ class TestServer(unittest.TestCase):
         self._signup('vicious')
         self._logout()
 
-        r = self.s.get("%s/vicious/tagged/erudite")
+        r = self.s.get("%s/vicious/tagged/erudite" % HOST)
         self.assertEqual(200, r.status_code)
         self.assertEqual('[]', r.content)
 

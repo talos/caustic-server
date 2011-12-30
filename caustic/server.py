@@ -87,7 +87,7 @@ class TemplateMixin():
         template exists, None otherwise.
         """
         template = self.db_conn.templates.find_one({
-                'owner': owner,
+                'owner.id': owner.id,
                 'name': name,
                 'deleted': False})
         return Template(**template) if template else None
@@ -99,7 +99,7 @@ class TemplateMixin():
         """
         return [Template(**template)
                 for template in self.db_conn.templates.find({
-                    'owner': owner,
+                    'owner.id': owner.id,
                     'tags': tag,
                     'deleted': False})]
 
@@ -296,6 +296,13 @@ class CloneHandler(WebMessageHandler, UserMixin, TemplateMixin):
 
         repo_to_clone.clone(self.current_user.id, template.id)
         return self.render(status_code=204)
+
+
+class PullHandler(WebMessageHandler, UserMixin, TemplateMixin):
+    """This handler pulls one repo into another.
+    """
+
+    pass
 
 
 class TagHandler(WebMessageHandler, UserMixin, TemplateMixin):
