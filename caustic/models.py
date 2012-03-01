@@ -1,4 +1,4 @@
-from dictshield.document import Document, EmbeddedDocument, diff_id_field
+from dictshield.document import Document, EmbeddedDocument
 
 from dictshield.fields.base import StringField, BooleanField
 from dictshield.fields.compound import ListField, EmbeddedDocumentField
@@ -25,7 +25,6 @@ class Template(Document):
     '''
 
     id = ObjectIdField(id_field=True)
-    #owner_id = ObjectIdField(required=True)
     owner = EmbeddedDocumentField(User, required=True)
     name = StringField(required=True)
     tags = ListField(StringField())
