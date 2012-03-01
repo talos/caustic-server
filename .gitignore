@@ -1,6 +1,7 @@
 *.pyc
 *.DS_Store
 *.db
+*.swp
 run/*
 log/*
 templates/*
