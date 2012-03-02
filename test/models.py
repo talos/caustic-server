@@ -3,7 +3,7 @@ Test caustic/models.py .
 """
 
 import unittest
-from caustic.models import User, instruction
+from caustic.models import User, Instruction
 from dictshield.base import ShieldException
 
 class TestUser(unittest.TestCase):
@@ -28,7 +28,7 @@ class TestUser(unittest.TestCase):
         self.assertFalse(u.deleted)
 
 
-class Testinstruction(unittest.TestCase):
+class TestInstruction(unittest.TestCase):
 
     def setUp(self):
         """
@@ -41,7 +41,7 @@ class Testinstruction(unittest.TestCase):
         """
         Should not validate without an owner
         """
-        t = instruction(name="orphan", json=self.json)
+        t = Instruction(name="orphan", json=self.json)
         with self.assertRaises(ShieldException):
             t.validate()
 
@@ -49,7 +49,7 @@ class Testinstruction(unittest.TestCase):
         """
         Should not validate without a name.
         """
-        t = instruction(owner=self.owner, json=self.json)
+        t = Instruction(owner=self.owner, json=self.json)
         with self.assertRaises(ShieldException):
             t.validate()
 
@@ -57,7 +57,7 @@ class Testinstruction(unittest.TestCase):
         """
         Should not validate without json.
         """
-        t = instruction(owner=self.owner, name="empty")
+        t = Instruction(owner=self.owner, name="empty")
         with self.assertRaises(ShieldException):
             t.validate()
 
@@ -65,21 +65,21 @@ class Testinstruction(unittest.TestCase):
         """
         Should validate if there is json, owner, and name.
         """
-        t = instruction(owner=self.owner, json=self.json, name="valid")
+        t = Instruction(owner=self.owner, json=self.json, name="valid")
         t.validate() # would throw an exception to fail test.
 
     def test_is_public_by_default(self):
         """
         Instructions are public by default.
         """
-        t = instruction(name="public", owner=self.owner)
+        t = Instruction(name="public", owner=self.owner)
         self.assertFalse(t.private)
 
     def test_is_not_deleted_by_default(self):
         """
         Instructions are not deleted by default.
         """
-        t = instruction(name="here", owner=self.owner)
+        t = Instruction(name="here", owner=self.owner)
         self.assertFalse(t.deleted)
 
 
