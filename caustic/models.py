@@ -18,7 +18,7 @@ class User(EmbeddedDocument):
 
 class Instruction(Document):
     """
-    A template with a name and tags that belongs to a
+    A instruction with a name and tags that belongs to a
     a single user.  It is backed with a mercurial repo,
     corresponding to the internal DB id.
     """
