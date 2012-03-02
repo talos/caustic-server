@@ -6,166 +6,170 @@ Caustic server.
 Store caustic JSON templates in little repos and let users shoot 'em round.
 """
 
-import sys
 import json
 import logging
 import bson
 from brubeck.request_handling import Brubeck, WebMessageHandler
 from brubeck.auth import authenticated, UserHandlingMixin
 
-from config    import config
-from mercurial import Repository
-from models    import Template, User
+from templating import MustacheRendering
+from config     import config
+from mercurial  import Repository
+from models     import Instruction, User
 
-
+#
+# MIXINS
+#
 class UserMixin(UserHandlingMixin):
-    """Use this mixin to leverage Brubeck's UserHandlingMixin.  Also
+    """
+    Use this mixin to leverage Brubeck's UserHandlingMixin.  Also
     provides methods to get and persist users.
     """
 
-    def get_user(self, user_name):
-        """Returns the DictShield User object from the database
-        corresponding to the String `user_name`, or None if there is
-        no user with the specified `user_name`.  Will also return None
-        if the passed `user_name` is None.
-        """
-        user = self.db_conn.users.find_one({
-                'name': user_name,
-                'deleted': False})
-        return User(**user) if user else None
-
     def get_current_user(self):
-        """Return the User DictShield object from the database using
+        """
+        Return the User DictShield model from the database using
         cookie session.  Returns `None` if there is no current user.
         """
-        user_id = self.get_cookie(config['session_cookie_name'],
-                                  None,
-                                  self.application.cookie_secret)
-        user = self.db_conn.users.find_one(bson.ObjectId(user_id)) if user_id else None
-
-        return User(**user) if user else None
+        id = self.get_cookie('session', None, self.application.cookie_secret)
+        return User(**self.db_conn.users.find_one(id=id))
 
     def set_current_user(self, user):
-        """Set the cookie that will be used for session management.
-        `user` is a User DictShield object. Returns None.
         """
-        self.set_cookie(config['session_cookie_name'],
-                        unicode(user.id),
-                        self.application.cookie_secret)
-        return None
+        Set the cookie that will be used for session management.
+        `user` is a User.
+        """
+        self.set_cookie('session', user.id, self.application.cookie_secret)
 
     def logout_user(self):
-        """Log out the current user.  Returns None
         """
-        self.delete_cookie(config['session_cookie_name'])
-        return None
-
-    def persist_user(self, user):
-        """Persist `user`, a DictShield User.  Returns None.
+        Log out the current user.  Returns None
         """
-        # update the DictShield User in-place
-        user.id = self.db_conn.users.save(user.to_python())
-        return None
-
-    def delete_user(self, user):
-        """Delete `user`, a DictShield User, by setting their
-        'deleted' flag to True. Returns None.
-        """
-        user.deleted = True
-        self.db_conn.users.save(user.to_python())
-        return None
+        self.delete_cookie('session')
 
 
-class TemplateMixin():
-    """Use this mixin with WebMessageHandler to get and persist
-    templates to the database.
+class InstructionMixin():
+    """
+    Use this mixin with to get and persist instructions to the database.
     """
 
-    def get_template(self, owner, name):
-        """Get the template for `owner`, a DictShield User, and
-        `name`, a String.  Returns a DictShield Template if the
-        template exists, None otherwise.
+    def get_instruction(self, owner, name):
         """
-        template = self.db_conn.templates.find_one({
+        Get the instruction for `owner`, a User,  and `name`, a strings.
+        Returns the Instruction if it exists, None otherwise.
+        """
+        instruction = self.db_conn.instruction.find_one({
                 'owner.id': owner.id,
                 'name': name,
-                'deleted': False})
-        return Template(**template) if template else None
+                'deleted': False })
+        return Instruction(**instruction) if instruction else None
 
-    def get_tagged_templates(self, owner, tag):
-        """Get all templates for `owner`, a DictShield User, with
-        the tag String `tag`.  Returns an array of DictShield Templates,
+    def get_tagged_instruction_names(self, owner, tag):
+        """
+        Get all instructions for `owner`, a User, with
+        the tag String `tag`.  Returns an array of instructions,
         of 0 length if there were none for `tag` in `owner`.
         """
-        return [Template(**template)
-                for template in self.db_conn.templates.find({
+        instructions = self.db_conn.templates.find({
                     'owner.id': owner.id,
                     'tags': tag,
-                    'deleted': False})]
+                    'deleted': False})
+        return [Instruction(**instruction) for instruction in instructions]
 
-    def get_repo(self, template):
-        """Return the mercurial repo for the DictShield template `template`.
+    def get_repo(self, instruction):
+        """
+        Return the mercurial repo for the Instruction `instruction`.
         Will create this repo if it doesn't already exist.
         """
         return Repository(config['mercurial_dir'],
-                          str(template.owner.id),
-                          str(template.id))
+                          str(instruction.owner.id),
+                          str(instruction.id))
 
 
-    def persist_template(self, template):
-        """Persist the DictShield `template` to the DB.  returns None.
+class JsonMixin():
+    """
+    Use this mixin to repurpose handlers for both JSON and non-JSON responses.
+    """
+
+    def is_json_request(self):
         """
-        # modify template in-place
-        template.id = self.db_conn.templates.save(template.to_python())
-        return None
+        Returns True if this was a request for JSON, False otherwise.
+        """
+        return self.message.headers['Accept'] == 'application/json'
 
-
+#
+# HANDLERS
+#
 class IsAliveHandler(WebMessageHandler):
-    """This handler provides ping-like functionality, letting clients
+    """
+    This handler provides ping-like functionality, letting clients
     know whether the server is available.
     """
-    def head(self):
+    def trace(self):
         return self.render(status_code=204)
 
 
-class SignUpHandler(WebMessageHandler, UserMixin):
-    """This handler lets users sign up.  Takes argument `user`.  The
+class SignupHandler(MustacheRendering, UserMixin, JsonMixin):
+    """
+    This handler lets users sign up.  Takes argument `user`.  The
     user is logged in after signing up.
     """
 
     def post(self):
         logging.warn('Signup not yet implemented.')
+        context = {}
 
         if self.current_user:
-            self.set_body('You cannot be logged in to sign up.')
-            return self.render(status_code=400)
+            context['error'] = 'You are already signed up.'
+            status = 400 
+        else:
+            user = self.get_argument('user')
 
-        user_name = self.get_argument('user')
+            if not user:
+                context['error'] = 'You must specify user name to sign up'
+                status = 400
+            elif self.get_user(user):
+                context['error'] = 'User name %s is already in use.' % user
+                status = 400
+            else:
+                self.save_user(user)
+                self.set_current_user(user)
+                context['user'] = user
+                status = 200
 
-        if not user_name:
-            self.set_body('You must specify user name to sign up')
-            return self.render(status_code=400)
-
-        if self.get_user(user_name):
-            self.set_body('User name %s is already in use.' % user_name)
-            return self.render(status_code=400)
-
-        user = User(name=user_name)
-        self.persist_user(user)
-
-        self.set_current_user(user)
-        return self.render(status_code=204)
+        if self.is_json_request():
+            self.set_body(json.dumps(context))
+            self.set_status(status)
+            return self.render()
+        else:
+            return self.render_template('signup', _status_code=204, **context)
 
 
-class DeleteAccountHandler(WebMessageHandler, UserMixin):
-    """This handler lets a user delete his/her account.  This does not delete
-    their templates, but will orphan them.
+class DeleteAccountHandler(MustacheRendering, UserMixin):
+    """
+    This handler lets a user delete his/her account.  This does not delete
+    their instructions, but will orphan them.
     """
 
-    @authenticated
     def post(self):
-        self.delete_user(self.current_user)
-        return self.render(status_code=204)
+        context = {}
+        if not self.current_user:
+            context['error'] = 'You are not signed in.'
+            status = 401
+        else:
+            token = self.get_argument('token')
+                
+            if token:
+                self.delete_user(self.current_user)
+                return self.render(status_code=204)
+
+        if self.is_json_request():
+            self.set_body(json.dumps(context))
+            self.set_status(status)
+            return self.render()
+        else:
+            return self.render_template('signup', _status_code=204, **context)
+            
 
 
 class LogInHandler(WebMessageHandler, UserMixin):
@@ -297,14 +301,6 @@ class CloneHandler(WebMessageHandler, UserMixin, TemplateMixin):
         repo_to_clone.clone(self.current_user.id, template.id)
         return self.render(status_code=204)
 
-
-class PullHandler(WebMessageHandler, UserMixin, TemplateMixin):
-    """This handler pulls one repo into another.
-    """
-
-    pass
-
-
 class TagHandler(WebMessageHandler, UserMixin, TemplateMixin):
     """This handler serves an array of template links by tag.
     """
@@ -321,19 +317,17 @@ class TagHandler(WebMessageHandler, UserMixin, TemplateMixin):
         return self.render(status_code=200)
 
 
-urls = [
+config['handler_tuples'] = [
     (r'^/$', IsAliveHandler),
-    (r'^/signup$', SignUpHandler),
+    (r'^/signup$', SignupHandler),
     (r'^/die$', DeleteAccountHandler),
-    (config['login_url'], LogInHandler),
-    (r'^/logout', LogOutHandler),
-    (r'^/(?P<owner_name>[\w\-]+)/(?P<name>[\w\-]+)$', NameHandler),
-    (r'^/(?P<owner_name>[\w\-]+)/(?P<name>[\w\-]+)/clone$',  CloneHandler),
-    (r'^/(?P<owner_name>[\w\-]+)/(?P<name>[\w\-]+)/pull/(?P<from_owner_name>[\w\-]+)/(?P<from_name>[\w\-]+)$',  PullHandler),
-    (r'^/(?P<owner_name>[\w\-]+)/tagged/(?P<tag>[\w\-]+)$',  TagHandler)]
+    (r'^/login$', LoginHandler),
+    (r'^/logout$', LogoutHandler),
+    (r'^/([\w\-]+)/tagged/([\w\-]+)/?$', TagIndexHandler),
+    (r'^/([\w\-]+)/instructions/?$', InstructionCollectionHandler),
+    (r'^/([\w\-]+)/instructions/([\w\-]+)/?$', InstructionModelHandler),
+    (r'^/([\w\-]+)/instructions/([\w\-]+)/tag/([\w\-]+)/?$', InstructionTagHandler)]
 
-# Add handler tuples to the imported config.
-config['handler_tuples'] = urls
 
 app = Brubeck(**config)
 app.run()
