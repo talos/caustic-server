@@ -15,7 +15,7 @@ from brubeck.auth import UserHandlingMixin
 
 from templating import MustacheRendering
 from config     import config
-from mercurial  import Repository
+from vcs        import Repository
 from models     import Instruction, User
 
 #
@@ -299,7 +299,7 @@ class InstructionModelHandler(MustacheRendering, UserMixin, InstructionMixin, Js
                 instruction.tags = json.loads(self.get_argument('tags', '[]')),
                 instruction.instruction = json.loads(self.get_argument('instruction'))
 
-                repo = Repository(config['mercurial_dir'],
+                repo = Repository(config['vcs_dir'],
                           str(instruction.owner.id),
                           str(instruction.id))
                 repo.commit(json.dumps(instruction.instruction,

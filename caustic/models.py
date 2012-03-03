@@ -57,7 +57,7 @@ class InstructionField(DictField):
 class Instruction(Document):
     """
     A instruction with a name and tags that belongs to a
-    a single user.  It is backed with a mercurial repo,
+    a single user.  It is backed with a Repository,
     corresponding to the internal DB id.
     """
     id = ObjectIdField(id_field=True)
@@ -68,7 +68,7 @@ class Instruction(Document):
     private = BooleanField(default=False)
     deleted = BooleanField(default=False)
 
-    # This is the most recent commit to the mercurial repo
+    # This is the most recent commit to the repo
     instruction = InstructionField(required=True)
 
     _private_fields = [private, deleted]

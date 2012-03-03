@@ -10,7 +10,5 @@ config = {
     'db_conn'  : pymongo.Connection('localhost', 27017).caustic,
     'cookie_secret': str(uuid.uuid4()), # A secret set for encoding
                                         # cookies at runtime.
-
-    'default_commit': 'committed',
-    'mercurial_dir' : 'templates'
+    'vcs_dir' : 'vcs'
 }
