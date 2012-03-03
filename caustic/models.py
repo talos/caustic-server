@@ -1,6 +1,10 @@
-from dictshield.document import Document, EmbeddedDocument
+import validictory
 
-from dictshield.fields.base import StringField, BooleanField
+import schema
+
+from dictshield.document import Document, EmbeddedDocument
+from dictshield.base import ShieldException
+from dictshield.fields.base import StringField, BooleanField, DictField
 from dictshield.fields.compound import ListField, EmbeddedDocumentField
 from dictshield.fields.mongo import ObjectIdField
 
@@ -11,10 +15,44 @@ class User(EmbeddedDocument):
     """
     id = ObjectIdField(id_field=True)
     name = StringField(required=True)
+    delete_token = StringField()
     deleted = BooleanField(default=False)
 
     _private_fields = [deleted]
 
+
+class InstructionField(DictField):
+    """
+    The raw contents of an instruction, independent of its name or tags in
+    the database.
+    """
+
+    def validate(self, value):
+        """
+        Validate the instruction with validictory.
+        """
+        super(DictField, self).validate(value) 
+        try:
+            validictory.validate(value, schema.INSTRUCTION)
+        except ValueError as instruction_err:
+            errors = []
+            # We don't know which schema it failed against, if it wasn't within
+            # a 'then' block we may be able to be more specific.
+            try:
+                validictory.validate(value, schema.FIND)
+            except ValueError as find_err:
+                errors.append(find_err)
+
+            try:
+                validictory.validate(value, schema.LOAD)
+            except ValueError as load_err:
+                errors.append(load_err)
+
+            if not errors:
+                errors = [instruction_err]
+
+            raise ShieldException("Invalid Instruction: %s" % errors,
+                                  'instruction', value)
 
 class Instruction(Document):
     """
@@ -31,6 +69,6 @@ class Instruction(Document):
     deleted = BooleanField(default=False)
 
     # This is the most recent commit to the mercurial repo
-    json = StringField(required=True)
+    instruction = InstructionField(required=True)
 
     _private_fields = [private, deleted]
