@@ -28,7 +28,8 @@ class AlreadyExistsException(Exception):
 
 
 class Repository(object):
-    """An object to commit, pull, and push single-file Mercurial repos.
+    """
+    An object to commit, pull, and push single-file Mercurial repos.
     """
 
     def __init__(self, base_path, user, name, create=True):
@@ -52,7 +53,8 @@ class Repository(object):
                 "No repo %s for user %s" % (name, user))
 
     def _create_repo(self, path):
-        """Initialize a new repo at `path`.
+        """
+        Initialize a new repo at `path`.
         """
         os.makedirs(path)
 
@@ -66,7 +68,8 @@ class Repository(object):
         return repo
 
     def commit(self, content, message):
-        """Commits the specified content to this repo.
+        """
+        Commits the specified content to this repo.
         """
         # Truncate & write the file.
         with open(self.file_path, 'w') as f:
@@ -79,19 +82,22 @@ class Repository(object):
             raise CommitException(e)
 
     def pull(self, from_repo):
-        """Pulls from the specified mercurial.Repository.
+        """
+        Pulls from the specified mercurial.Repository.
         """
         from_path = os.path.abspath(from_repo.repo.path)  # a bit hacky.
         self.repo.hg_command('pull', from_path)
         self.repo.hg_command('update')
 
     def get(self):
-        """Get the latest content from this repo.
+        """
+        Get the latest content from this repo.
         """
         return open(self.file_path, 'r').read()
 
     def clone(self, user, name):
-        """Clone this repo into `name` for `user`.  Returns the cloned
+        """
+        Clone this repo into `name` for `user`.  Returns the cloned
         repo.  Raises an AlreadyExistsException if a user clones their
         own repo and doesn't specify a new name.
         """
