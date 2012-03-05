@@ -119,7 +119,7 @@ class DictRepository(object):
         parent = from_commit
         from_parents = []
         while parent:
-            from_parents.append(parent.oid)
+            from_parents.append(parent)
             # No conflicting commits, fast forward this sucka by moving the ref
             if parent.oid == to_commit.oid:
                 self.repo.lookup_reference(self._ref(to_path)).delete()
@@ -132,11 +132,11 @@ class DictRepository(object):
         shared_parent = None
         for from_parent in from_parents:
             parent = to_commit # start scanning up to_commit's ancestors
-            while len(parent.parents) == 1:
-                parent = parent.parents[0]
+            while parent:
                 if parent.oid == from_parent.oid:
                     shared_parent = parent
                     break
+                parent = parent.parents[0] if len(parent.parents) == 1 else None
             if shared_parent:
                 break
         if not shared_parent:
@@ -146,9 +146,9 @@ class DictRepository(object):
         from_diff = self._commit_diff(shared_parent, from_commit)
         to_diff = self._commit_diff(shared_parent, to_commit)
         conflicts = {}
-        for from_mod_type, from_mods in from_diff:
-            for to_mod_type, to_mods in to_diff:
-                for from_mod_key, from_mod_value in from_mods:
+        for from_mod_type, from_mods in from_diff.items():
+            for to_mod_type, to_mods in to_diff.items():
+                for from_mod_key, from_mod_value in from_mods.items():
                     if from_mod_key in to_mods:
                         to_mod_value = to_mods[from_mod_key]
                         # if the mod type is the same, it's OK if the actual
@@ -175,14 +175,18 @@ class DictRepository(object):
         # Sweet. we can apply all the diffs.
         else:
             merged = self._dict(shared_parent)
-            for k, v in dict(from_diff['_remove'].items() + to_diff['_remove'].items()):
+            for k, v in from_diff.get('_remove', {}).items() + \
+                        to_diff.get('_remove', {}).items():
                 merged.pop(k)
-            for k, v in dict(from_diff['_update'].items() + to_diff['_update'].items()):
+            for k, v in from_diff.get('_update', {}).items() + \
+                        to_diff.get('_update', {}).items():
                 merged[k] = v
-            for k, v in dict(from_diff['_append'].items() + to_diff['_append'].items()):
+            for k, v in from_diff.get('_append', {}).items() + \
+                        to_diff.get('_append', {}).items():
                 merged[k] = v
-            self.commit(to_path, author_sig, committer_sig, 'Auto-merge',
-                        merged, [from_commit, to_commit])
+            self.commit(to_path, merged, author_sig, committer_sig,
+                        'Auto-merge', [from_commit.oid, to_commit.oid])
+            return True
 
     def clone(self, from_path, to_path):
         """
