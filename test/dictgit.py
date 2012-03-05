@@ -97,9 +97,9 @@ class TestDictRepository(unittest.TestCase):
         """
         Cannot merge if no shared parent commit.
         """
-        self.repo.commit('foo', {}, SIG, SIG, 'message')
-        self.repo.commit('bar', {}, SIG, SIG, 'message')
-        self.assertFalse(self.repo.merge('foo', 'bar'))
+        self.repo.commit('foo', {'roses': 'red'}, SIG, SIG, 'message')
+        self.repo.commit('bar', {'violets': 'blue'}, SIG, SIG, 'message')
+        self.assertFalse(self.repo.merge('foo', 'bar', SIG, SIG))
 
     def test_fast_forward_merge(self):
         """
@@ -108,6 +108,6 @@ class TestDictRepository(unittest.TestCase):
         self.repo.commit('foo', {}, SIG, SIG, 'message')
         self.repo.clone('foo', 'bar')
         self.repo.commit('foo', {'roses': 'red'}, SIG, SIG, 'message')
-        self.assertTrue(self.repo.merge('foo', 'bar'))
+        self.assertTrue(self.repo.merge('foo', 'bar', SIG, SIG))
         self.assertEqual({'roses': 'red'}, self.repo.get('bar'))
 

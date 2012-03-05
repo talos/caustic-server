@@ -97,7 +97,7 @@ class DictRepository(object):
         return self._commit_diff(self._last_commit(path1),
                                  self._last_commit(path2))
 
-    def merge(self, author_sig, committer_sig, from_path, to_path):
+    def merge(self, from_path, to_path, author_sig, committer_sig):
         """
         Merge from_data into to_data.  This will
         succeed if from_data can be fast-forwarded, or if the
@@ -112,25 +112,29 @@ class DictRepository(object):
         if from_commit.oid == to_commit.oid:
             return True
 
+        # import pdb
+        # pdb.set_trace()
+
         # Test if a fast-forward is possible
-        parent = to_commit
-        to_parents = []
-        while len(parent.parents) == 1:
-            parent = parent.parents[0]
-            to_parents.append(parent.oid)
+        parent = from_commit
+        from_parents = []
+        while parent:
+            from_parents.append(parent.oid)
             # No conflicting commits, fast forward this sucka by moving the ref
-            if parent.oid == from_commit.oid:
-                self.repo.create_reference(self._ref(to_path), to_commit.oid)
+            if parent.oid == to_commit.oid:
+                self.repo.lookup_reference(self._ref(to_path)).delete()
+                self.repo.create_reference(self._ref(to_path), from_commit.oid)
                 return True
+            parent = parent.parents[0] if len(parent.parents) == 1 else None
 
         # Do a merge if there were no overlapping changes
         # First, find the shared parent
         shared_parent = None
-        for to_parent in to_parents:
-            parent = from_commit
+        for from_parent in from_parents:
+            parent = to_commit # start scanning up to_commit's ancestors
             while len(parent.parents) == 1:
                 parent = parent.parents[0]
-                if parent.oid == to_parent.oid:
+                if parent.oid == from_parent.oid:
                     shared_parent = parent
                     break
             if shared_parent:
