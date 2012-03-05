@@ -92,3 +92,22 @@ class TestDictRepository(unittest.TestCase):
         self.repo.commit('foo', {'foo': 'bar'}, SIG, SIG, 'message')
         with self.assertRaises(ValueError):
             self.repo.clone('foo', 'foo')
+
+    def test_nonshared_merge(self):
+        """
+        Cannot merge if no shared parent commit.
+        """
+        self.repo.commit('foo', {}, SIG, SIG, 'message')
+        self.repo.commit('bar', {}, SIG, SIG, 'message')
+        self.assertFalse(self.repo.merge('foo', 'bar'))
+
+    def test_fast_forward_merge(self):
+        """
+        If there are no intervening commits, this merge should be simple.
+        """
+        self.repo.commit('foo', {}, SIG, SIG, 'message')
+        self.repo.clone('foo', 'bar')
+        self.repo.commit('foo', {'roses': 'red'}, SIG, SIG, 'message')
+        self.assertTrue(self.repo.merge('foo', 'bar'))
+        self.assertEqual({'roses': 'red'}, self.repo.get('bar'))
+
