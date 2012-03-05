@@ -3,7 +3,7 @@ Test caustic/models.py .
 """
 
 import unittest
-from caustic.models import User, Instruction
+from caustic.models import User
 from dictshield.base import ShieldException
 
 class TestUser(unittest.TestCase):
@@ -35,60 +35,26 @@ class TestInstruction(unittest.TestCase):
         Provide with a convenient owner and valid json.
         """
         self.owner = User(name="pwner")
-        self.instruction = {"load": "http://www.google.com/"}
 
-    def test_requires_owner(self):
-        """
-        Should not validate without an owner
-        """
-        t = Instruction(name="orphan", instruction=self.instruction)
+    def test_requires_string_key(self):
+        self.owner.instructions[100] = {"load":"google.com"}
         with self.assertRaises(ShieldException):
-            t.validate()
+            self.owner.validate()
 
-    def test_requires_name(self):
-        """
-        Should not validate without a name.
-        """
-        t = Instruction(owner=self.owner, instruction=self.instruction)
-        with self.assertRaises(ShieldException):
-            t.validate()
-
-    def test_requires_instruction(self):
-        """
-        Should not validate without instruction
-        """
-        t = Instruction(owner=self.owner, name="empty")
-        with self.assertRaises(ShieldException):
-            t.validate()
-    
     def test_requires_valid_instruction(self):
         """
         Should not validate without valid instruction.
         """
-        i = Instruction(owner=self.owner, name='invalid', instruction={'foo':'bar'})
+        self.owner.instructions['google'] = {"foo":"bar"}
         with self.assertRaises(ShieldException):
-            i.validate()
+            self.owner.validate()
 
     def test_validates(self):
         """
         Should validate if there is a valid instruction, owner, and name.
         """
-        i = Instruction(owner=self.owner, instruction=self.instruction, name="valid")
-        i.validate() # would throw an exception to fail test.
-
-    def test_is_public_by_default(self):
-        """
-        Instructions are public by default.
-        """
-        t = Instruction(name="public", owner=self.owner)
-        self.assertFalse(t.private)
-
-    def test_is_not_deleted_by_default(self):
-        """
-        Instructions are not deleted by default.
-        """
-        t = Instruction(name="here", owner=self.owner)
-        self.assertFalse(t.deleted)
+        self.owner.instructions['valid'] = {'load':'google.com'}
+        self.owner.validate() # would throw an exception to fail test.
 
 
 # Primitive runner!

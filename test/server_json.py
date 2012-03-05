@@ -7,7 +7,7 @@ LOAD_GOOGLE = '{"load":"http://www.google.com/"}' # valid scraping instruction
 
 class TestServerJSON(unittest.TestCase):
     """
-    Test the server's JSON api.
+    Test the server's JSON API.
     """
 
     def _signup(self, user):
@@ -15,24 +15,32 @@ class TestServerJSON(unittest.TestCase):
         Sign up `user`, while keeping track of the signup for later cleanup.
         """
         self.created_accounts.append(user)
-        r = self.s.post("%s/signup" % HOST, data={'user': user})
-        return r
+        self.s.post("%s" % HOST, data={
+            'action': 'signup',
+            'user'  : user
+        })
 
     def _login(self, user):
         """
-        Login `user`, return the response object.
+        Login `user`.
         """
-        return self.s.post("%s/login" % HOST, data={'user': user})
+        self.s.post("%s" % HOST, data={
+            'action': 'login',
+            'user'  : user
+        })
 
     def _logout(self):
         """
-        Log out, return the response object.
+        Log out.
         """
-        return self.s.post("%s/logout" % HOST, data='')
+        self.s.post("%s" % HOST, data={
+            'action': 'logout'
+        })
 
     def setUp(self):
         """
-        Keep track of created accounts and session.
+        Keep track of created accounts and session, make sure requests are for
+        JSON.
         """
         self.created_accounts = []
         self.s = requests.Session(headers={"Accept":"application/json"})
@@ -44,15 +52,14 @@ class TestServerJSON(unittest.TestCase):
         for user in self.created_accounts:
             self._logout()
             self._login(user)
-            kill_token = json.loads(self.s.delete("%s/%s" % (HOST, user)).content)['token']
-            self.s.delete("%s/%s" % (HOST, user), data={'token': kill_token})
+            token = json.loads(self.s.delete("%s/%s" % (HOST, user)).content)['token']
+            self.s.delete("%s/%s" % (HOST, user), data={'token': token})
 
     def test_signup(self):
         """
         Test signing up.  We should have logged in after signing up.
         """
-        r = self._signup('corbusier')
-        self.assertEqual(204, r.status_code)
+        self._signup('corbusier')
         self.assertTrue('session' in self.s.cookies)
 
     def test_login(self):
@@ -61,8 +68,7 @@ class TestServerJSON(unittest.TestCase):
         """
         self._signup('mies')
         self._logout()
-        r =  self._login('mies')
-        self.assertEqual(204, r.status_code)
+        self._login('mies')
         self.assertTrue('session' in self.s.cookies)
 
     def test_logout(self):
@@ -70,9 +76,8 @@ class TestServerJSON(unittest.TestCase):
         Test logging out.
         """
         self._signup('vitruvius')
-        r = self._logout()
-        self.assertEqual(204, r.status_code)
-        self.assertTrue('session' in self.s.cookies)
+        self._logout()
+        self.assertFalse('session' in self.s.cookies)
 
     def test_nonexistent(self):
         """
@@ -81,12 +86,14 @@ class TestServerJSON(unittest.TestCase):
         r = self.s.get("%s/lksdjflksdjg" % HOST)
         self.assertEqual(404, r.status_code)
 
-    def test_create_instruction(self):
+    def test_create_valid_instruction(self):
         """
         Create an instruction on the server using HTTP PUT.
         """
         self._signup('fuller')
-        r = self.s.put("%s/fuller/instructions/manhattan-bubble" % HOST, data=LOAD_GOOGLE)
+        r = self.s.put("%s/fuller/instructions/manhattan-bubble" % HOST, data={
+            LOAD_GOOGLE
+        })
         self.assertEqual(201, r.status_code)
 
     def test_invalid_instruction(self):
