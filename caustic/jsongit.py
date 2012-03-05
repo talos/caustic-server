@@ -3,7 +3,7 @@ import time
 import json_diff
 try:
     import simplejson as json
-    json; # appease the pyflakes god
+    json; # appease the uncaring pyflakes god
 except ImportError:
     import json
 from pygit2 import init_repository, GIT_OBJ_BLOB, GIT_OBJ_TREE, \
@@ -20,9 +20,9 @@ def signature(name, email):
     return Signature(name, email, int(time.time()), offset_sec / 60)
 
 
-class Repo(object):
+class JSONRepository(object):
     """
-    An interface to git repo.
+    An interface to JSON git repo.
     """
 
     def __init__(self, path):
@@ -184,3 +184,8 @@ class Repo(object):
         """
         self.repo.create_reference(self._ref(to_name),
                                    self._last_commit(from_name).oid)
+
+    def get(self, name):
+        """
+        
+        """

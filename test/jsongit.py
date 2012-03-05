@@ -1,37 +1,36 @@
 """
-Test caustic/vcs.py .
+Test caustic/jsongit.py .
 """
 
 import os
 import unittest
 import shutil
-from caustic.vcs import Repository, \
-                        NoRepositoryException, \
-                        AlreadyExistsException
+from caustic.jsongit import JSONRepository
 
 TEST_DIR = os.path.join('test', 'tmp')
 
-if(os.path.isdir(TEST_DIR)):
-    shutil.rmtree(TEST_DIR)  # Kid of messy, but make sure we start
-                             # with a clean test directory
-
-
-class TestRepository(unittest.TestCase):
+class TestJSONRepository(unittest.TestCase):
 
     def setUp(self):
-        """Build a new test dir for each run.
         """
+        Build a new test dir for each run.
+        """
+        if os.path.isdir(TEST_DIR):
+            self.fail('There was already a repo at %s.' % TEST_DIR)
         os.makedirs(TEST_DIR)
 
     def tearDown(self):
-        """Kill the old test dir after each run.
+        """
+        Kill the old test dir after each run.
         """
         shutil.rmtree(TEST_DIR)
 
     def test_new_repo(self):
-        """Create a repo.  Make sure it exists.
         """
-        Repository(TEST_DIR, 'plato', 'foo')
+        Create a repo.  Make sure it exists.
+        """
+        JSONRepository(TEST_DIR)
+        self.assertTrue(os.path.isdir(TEST_DIR)
 
     def test_get_initial_content_blank(self):
         """The content should be blank to start.
@@ -109,7 +108,3 @@ class TestRepository(unittest.TestCase):
 
         self.assertEqual('thesis antithesis synthesis', marx.get())
 
-
-# Primitive runner!
-if __name__ == '__main__':
-    unittest.main()
