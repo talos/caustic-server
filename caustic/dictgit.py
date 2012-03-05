@@ -20,9 +20,9 @@ def signature(name, email):
     return Signature(name, email, int(time.time()), offset_sec / 60)
 
 
-class JSONRepository(object):
+class DictRepository(object):
     """
-    An interface to JSON git repo.
+    An interface to dict git repo.
     """
 
     def __init__(self, path):
@@ -35,46 +35,47 @@ class JSONRepository(object):
         else:
             self.repo = init_repository(path, True) # bare repo
 
-    def _ref(self, name):
+    def _ref(self, path):
         """
         Returns the String ref that should point to the most recent commit for
-        data of name.
+        data of path.
         """
-        return 'refs/%s/HEAD' % name
+        return 'refs/%s/HEAD' % path
 
-    def _last_commit(self, name):
+    def _last_commit(self, path):
         """
-        Retrieve the last commit for dict `name`.
+        Retrieve the last commit for `path`.
 
-        Returns None if there is no last commit (it's new).
+        Returns None if there is no last commit (it doesn't exist).
         """
         try:
-            return self.repo.lookup_reference(self._ref(name))
+            return self.repo.lookup_reference(self._ref(path))
         except KeyError:
             return None
 
-    def _instruction(self, commit):
+    def _dict(self, commit):
         """
-        Returns the instruction as a dict from a Commit.
+        Returns the dict from a Commit. Returns None if no commit.
         """
-        return json.loads(self.repo[commit.tree[DATA].oid].data)
+        return json.loads(self.repo[commit.tree[DATA].oid].data) if commit else None
 
     def _commit_diff(self, commit1, commit2):
         """
-        Returns the json_diff between the instructions linked to two different
-        commits.
+        Returns the json_diff between the dicts of two arbitrary commits.
         """
-        instr1 = self._instruction(commit1)
-        instr2 = self._instruction(commit2)
+        dict1, dict2 = self._dict(commit1), self._dict(commit2)
 
-        return json_diff.Comparator().compare_dicts(instr1, instr2)
+        return json_diff.Comparator().compare_dicts(dict1, dict2)
 
-    def commit(self, name, author_sig, committer_sig, message, data, parents=None):
+    def commit(self, path, data, author_sig, committer_sig, message, parents=None):
         """
         Commits the dict `data` to this repo.
 
-        Defaults to the last commit for the dict of this name.
+        Defaults to the last commit for the dict of this path.
         """
+        if not isinstance(data, dict):
+            raise ValueError('Cannot commit non-dict values.')
+
         blob = self.repo.write(GIT_OBJ_BLOB, json.dumps(data))
 
         # TreeBuilder doesn't support inserting into trees, so we roll our own
@@ -82,20 +83,20 @@ class JSONRepository(object):
 
         # Default to last commit for this if no parents specified
         if not parents:
-            last_commit = self._last_commit(name)
+            last_commit = self._last_commit(path)
             parents = [last_commit] if last_commit else []
 
-        self.repo.create_commit(self._ref(name), author_sig,
+        self.repo.create_commit(self._ref(path), author_sig,
                                 committer_sig, message, tree, parents)
 
-    def diff(self, name1, name2):
+    def diff(self, path1, path2):
         """
         Compute a JSON diff between two instructions.
         """
-        return self._commit_diff(self._last_commit(name1),
-                                 self._last_commit(name2))
+        return self._commit_diff(self._last_commit(path1),
+                                 self._last_commit(path2))
 
-    def merge(self, author_sig, committer_sig, from_name, to_name):
+    def merge(self, author_sig, committer_sig, from_path, to_path):
         """
         Merge from_data into to_data.  This will
         succeed if from_data can be fast-forwarded, or if the
@@ -103,8 +104,8 @@ class JSONRepository(object):
 
         Returns True if the merge succeeded, False otherwise.
         """
-        from_commit = self._last_commit(from_name)
-        to_commit = self._last_commit(to_name)
+        from_commit = self._last_commit(from_path)
+        to_commit = self._last_commit(to_path)
 
         # No difference
         if from_commit.oid == to_commit.oid:
@@ -118,7 +119,7 @@ class JSONRepository(object):
             to_parents.append(parent.oid)
             # No conflicting commits, fast forward this sucka by moving the ref
             if parent.oid == from_commit.oid:
-                self.repo.create_reference(self._ref(to_name), to_commit.oid)
+                self.repo.create_reference(self._ref(to_path), to_commit.oid)
                 return True
 
         # Do a merge if there were no overlapping changes
@@ -168,24 +169,31 @@ class JSONRepository(object):
             return False
         # Sweet. we can apply all the diffs.
         else:
-            merged = self._instruction(shared_parent)
+            merged = self._dict(shared_parent)
             for k, v in dict(from_diff['_remove'].items() + to_diff['_remove'].items()):
                 merged.pop(k)
             for k, v in dict(from_diff['_update'].items() + to_diff['_update'].items()):
                 merged[k] = v
             for k, v in dict(from_diff['_append'].items() + to_diff['_append'].items()):
                 merged[k] = v
-            self.commit(to_name, author_sig, committer_sig, 'Auto-merge',
+            self.commit(to_path, author_sig, committer_sig, 'Auto-merge',
                         merged, [from_commit, to_commit])
 
-    def clone(self, from_name, to_name):
+    def clone(self, from_path, to_path):
         """
-        Clone from_name into to_name.
+        Clone from_path into to_path.  Raises a KeyError if from_path does not
+        exist, and a ValueError if to_path already already exists.
         """
-        self.repo.create_reference(self._ref(to_name),
-                                   self._last_commit(from_name).oid)
+        if self._last_commit(to_path):
+            raise ValueError('Cannot clone to %s, there is already a dict there.' % to_path)
+        if self._last_commit(from_path):
+            self.repo.create_reference(self._ref(to_path),
+                                       self._last_commit(from_path).oid)
+        else:
+            raise KeyError('Cannot clone %s, there is no dict there.' % from_path)
 
-    def get(self, name):
+    def get(self, path):
         """
-        
+        Retrieve the most recent dict at path.  Returns None if there is none.
         """
+        return self._dict(self._last_commit(path))

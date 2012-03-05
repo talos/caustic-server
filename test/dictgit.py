@@ -9,7 +9,7 @@ from caustic.jsongit import JSONRepository
 
 TEST_DIR = os.path.join('test', 'tmp')
 
-class TestJSONRepository(unittest.TestCase):
+class TestDictRepository(unittest.TestCase):
 
     def setUp(self):
         """
@@ -30,7 +30,7 @@ class TestJSONRepository(unittest.TestCase):
         Create a repo.  Make sure it exists.
         """
         JSONRepository(TEST_DIR)
-        self.assertTrue(os.path.isdir(TEST_DIR)
+        self.assertTrue(os.path.isdir(TEST_DIR))
 
     def test_get_initial_content_blank(self):
         """The content should be blank to start.
