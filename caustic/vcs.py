@@ -3,109 +3,140 @@ Class to handle single-file repos with a single user.
 """
 
 import os
-from hgapi import hgapi
+import time
+import json_diff
+try:
+    import simplejson as json
+    json; # appease the pyflakes god
+except ImportError:
+    import json
+from pygit2 import init_repository, GIT_OBJ_BLOB, GIT_OBJ_TREE, \
+                   Repository, Signature
 
-# The name of the template file within the repo.
-TEMPLATE_FILE_NAME = 'content'
+# The name of the instruction blob within the tree.
+INSTRUCTION = 'instruction'
 
-
-class CommitException(Exception):
-    """This exception is thrown when a commit fails.
+class Repo(object):
     """
-    pass
-
-
-class NoRepositoryException(Exception):
-    """This exception is thrown when a repo does not exist.
-    """
-    pass
-
-
-class AlreadyExistsException(Exception):
-    """This exception is thrown when a repo already exists with the
-    same name and owner.
-    """
-    pass
-
-
-class Repository(object):
-    """
-    An object to commit, pull, and push single-file repos.
+    An interface to git repo.
     """
 
-    def __init__(self, base_path, user, name, create=True):
-        """Checks base_path joined with the user and name for a repo.
-        If no repo exists there, creates it with the specified user.
-        Otherwise, works with the existing repo.
+    def __init__(self, path):
         """
+        Initialize the repo with path.  Creates a bare repo there if none
+        exists yet.
+        """
+        #self.base_path = base_path
+        #path = os.path.join(base_path, user, name)
 
-        self.base_path = base_path
-        self.owner = user
-        self.name = name
-        path = os.path.join(base_path, user, name)
-        self.file_path = os.path.join(path, TEMPLATE_FILE_NAME)
-
-        if(os.path.isdir(path)):
-            self.repo = hgapi.Repo(path)
-        elif(create is True):
-            self.repo = self._create_repo(path)
+        if os.path.isdir(path):
+            self.repo = Repository(path)
         else:
-            raise NoRepositoryException(
-                "No repo %s for user %s" % (name, user))
+            self.repo = init_repository(path, True) # bare repo
+            #tree = TreeBuilder().write(self.repo)
+            #sig = Signature('openscrape', 'admin@openscrape.com', 0, 0)
+            #self.repo.create_commit('refs/heads/master', sig, sig,
+            #                        'Initial commit', tree, [])
+        #self.head = self.repo.lookup_reference(self.repo.lookup_reference('HEAD').target)
 
-    def _create_repo(self, path):
+    def _ref(self, user, name):
         """
-        Initialize a new repo at `path`.
+        Returns the String ref that should point to the most recent commit for
+        User user and String name.
         """
-        os.makedirs(path)
+        return 'refs/%s/%s/HEAD' % (user.id, name)
 
-        repo = hgapi.Repo(path)
-        repo.hg_init()
-        # add our single (blank) file
-        with open(self.file_path, 'w') as f:
-            f.write('')
-
-        repo.hg_add(TEMPLATE_FILE_NAME)
-        return repo
-
-    def commit(self, content, message):
+    def _last_commit(self, user, name):
         """
-        Commits the specified content to this repo.
-        """
-        # Truncate & write the file.
-        with open(self.file_path, 'w') as f:
-            f.write(content)
+        Retrieve the last commit for `user`'s instruction of `name`.
 
+        Returns None if there is no last commit (it's new).
+        """
         try:
-            self.repo.hg_commit(message, user=self.owner)
-        except Exception as e:
-            # hgapi returns a generic exception, which is sub-optimal.
-            raise CommitException(e)
+            return self.repo.lookup_reference(self._ref(user, name))
+        except KeyError:
+            return None
+        #ref = self.repo.lookup_reference(commit_ref).resolve()
+        #tree = self.repo[ref.oid].tree
+        #return self.repo[user_tree[name].oid]
+        #return json.loads(blob.data)
 
-    def pull(self, from_repo):
+    def _instruction(self, commit):
         """
-        Pulls from the specified Repository.
+        Returns the instruction as a dict from a Commit.
         """
-        from_path = os.path.abspath(from_repo.repo.path)  # a bit hacky.
-        self.repo.hg_command('pull', from_path)
-        self.repo.hg_command('update')
+        return json.loads(self.repo[commit.tree[INSTRUCTION].oid].data)
 
-    def get(self):
+    def _commit_diff(self, commit1, commit2):
         """
-        Get the latest content from this repo.
+        Returns the json_diff between the instructions linked to two different
+        commits.
         """
-        return open(self.file_path, 'r').read()
+        instr1 = self._instruction(commit1)
+        instr2 = self._instruction(commit2)
 
-    def clone(self, user, name):
-        """
-        Clone this repo into `name` for `user`.  Returns the cloned
-        repo.  Raises an AlreadyExistsException if a user clones their
-        own repo and doesn't specify a new name.
-        """
-        if (user == self.owner) and (name == self.name):
-            raise AlreadyExistsException("You must specify a new name"
-                                         " to clone your own repo.")
+        return json_diff.Comparator().compare_dicts(instr1, instr2)
 
-        cloned = Repository(self.base_path, user, name)
-        cloned.pull(self)
-        return cloned
+    def commit(self, user, name, message, instruction):
+        """
+        Commits the specified instruction dict to this repo.
+        """
+        offset_sec = time.altzone if time.daylight else time.timezone
+        sig = Signature(user,
+                        user.email if 'email' in user else user,
+                        int(time.time()),
+                        offset_sec / 60)
+        blob = self.repo.write(GIT_OBJ_BLOB, json.dumps(instruction))
+
+        # TreeBuilder doesn't support inserting into trees, so we roll our own
+        tree = self.repo.write(GIT_OBJ_TREE,
+                               '100644 %s\x00%s' % (INSTRUCTION, blob.oid))
+        last_commit = self._last_commit(user, name)
+        self.repo.create_commit(self._ref(user, name),
+                                sig, sig, message,
+                                tree,
+                                [last_commit] if last_commit else [])
+
+    def diff(self, user1, name1, user2, name2):
+        """
+        Compute a JSON diff between two instructions.
+        """
+        return self._commit_diff(self._last_commit(user1, name1),
+                                 self._last_commit(user2, name2))
+
+    def merge(self, from_user, from_name, to_user, to_name):
+        """
+        Merge from_user's from_name into to_user's to_name.  This will only
+        succeed if the to_user's to_name can be fast-forwarded, or if the
+        _update/_append/_remove dicts never intersect.
+
+        Returns True if the merge succeeded, False otherwise.
+        """
+        from_commit = self._last_commit(from_user, from_name)
+        to_commit = self._last_commit(to_user, to_name)
+
+        # No difference
+        if from_commit.oid == to_commit.oid:
+            return True
+
+        # Test if a fast-forward is possible
+        parent = to_commit
+        to_parents = []
+        while len(parent.parents) == 1:
+            parent = parent.parents[0]
+            to_parents.append(parent.oid)
+            # No conflicting commits, fast forward this sucka
+            if parent.oid == from_commit.oid:
+                self.repo.create_reference(self._ref(to_user, to_name), to_commit.oid)
+                return True
+
+        # Do a merge if there were no overlapping changes
+        # First, find the shared parent
+         
+        if len(self._commit_diff(from_commit, to_commit)) == 0:
+
+
+    def clone(self, from_user, from_name, to_user, to_name):
+        """
+        Clone from_user's from_name into to_user's to_name.
+        """
