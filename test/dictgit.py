@@ -111,3 +111,13 @@ class TestDictRepository(unittest.TestCase):
         self.assertTrue(self.repo.merge('foo', 'bar', SIG, SIG))
         self.assertEqual({'roses': 'red'}, self.repo.get('bar'))
 
+    def test_merge_conflict(self):
+        """
+        If there was a conflict that cannot be automatically resolved, should
+        not merge.
+        """
+        self.repo.commit('foo', {'roses': 'red'}, SIG, SIG, 'message')
+        self.repo.clone('foo', 'bar')
+        self.repo.commit('foo', {'roses': 'pink'}, SIG, SIG, 'message')
+        self.repo.commit('bar', {'roses': 'orange'}, SIG, SIG, 'message')
+        self.assertFalse(self.repo.merge('foo', 'bar', SIG, SIG))
