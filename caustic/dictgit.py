@@ -49,7 +49,7 @@ class DictRepository(object):
         Returns None if there is no last commit (it doesn't exist).
         """
         try:
-            return self.repo.lookup_reference(self._ref(path))
+            return self.repo[self.repo.lookup_reference(self._ref(path)).oid]
         except KeyError:
             return None
 
@@ -76,18 +76,19 @@ class DictRepository(object):
         if not isinstance(data, dict):
             raise ValueError('Cannot commit non-dict values.')
 
-        blob = self.repo.write(GIT_OBJ_BLOB, json.dumps(data))
+        blob_id = self.repo.write(GIT_OBJ_BLOB, json.dumps(data))
 
         # TreeBuilder doesn't support inserting into trees, so we roll our own
-        tree = self.repo.write(GIT_OBJ_TREE, '100644 %s\x00%s' % (DATA, blob.oid))
+        tree_id = self.repo.write(GIT_OBJ_TREE, '100644 %s\x00%s' % (DATA, blob_id))
 
         # Default to last commit for this if no parents specified
         if not parents:
             last_commit = self._last_commit(path)
-            parents = [last_commit] if last_commit else []
+            parents = [last_commit.oid] if last_commit else []
 
         self.repo.create_commit(self._ref(path), author_sig,
-                                committer_sig, message, tree, parents)
+                                committer_sig, message, tree_id, parents)
+        #self.repo.create_reference(self._ref(path), commit_id)
 
     def diff(self, path1, path2):
         """
