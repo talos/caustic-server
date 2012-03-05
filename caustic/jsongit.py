@@ -1,7 +1,3 @@
-"""
-Class to handle single-file repos with a single user.
-"""
-
 import os
 import time
 import json_diff
@@ -13,8 +9,16 @@ except ImportError:
 from pygit2 import init_repository, GIT_OBJ_BLOB, GIT_OBJ_TREE, \
                    Repository, Signature
 
-# The name of the instruction blob within the tree.
-INSTRUCTION = 'instruction'
+# The name of the only blob within the tree.
+DATA = 'data'
+
+def signature(name, email):
+    """
+    Convenience method to generate a pygit2.Signature.
+    """
+    offset_sec = time.altzone if time.daylight else time.timezone
+    return Signature(name, email, int(time.time()), offset_sec / 60)
+
 
 class Repo(object):
     """
@@ -26,46 +30,34 @@ class Repo(object):
         Initialize the repo with path.  Creates a bare repo there if none
         exists yet.
         """
-        #self.base_path = base_path
-        #path = os.path.join(base_path, user, name)
-
         if os.path.isdir(path):
             self.repo = Repository(path)
         else:
             self.repo = init_repository(path, True) # bare repo
-            #tree = TreeBuilder().write(self.repo)
-            #sig = Signature('openscrape', 'admin@openscrape.com', 0, 0)
-            #self.repo.create_commit('refs/heads/master', sig, sig,
-            #                        'Initial commit', tree, [])
-        #self.head = self.repo.lookup_reference(self.repo.lookup_reference('HEAD').target)
 
-    def _ref(self, user, name):
+    def _ref(self, name):
         """
         Returns the String ref that should point to the most recent commit for
-        User user and String name.
+        data of name.
         """
-        return 'refs/%s/%s/HEAD' % (user.id, name)
+        return 'refs/%s/HEAD' % name
 
-    def _last_commit(self, user, name):
+    def _last_commit(self, name):
         """
-        Retrieve the last commit for `user`'s instruction of `name`.
+        Retrieve the last commit for dict `name`.
 
         Returns None if there is no last commit (it's new).
         """
         try:
-            return self.repo.lookup_reference(self._ref(user, name))
+            return self.repo.lookup_reference(self._ref(name))
         except KeyError:
             return None
-        #ref = self.repo.lookup_reference(commit_ref).resolve()
-        #tree = self.repo[ref.oid].tree
-        #return self.repo[user_tree[name].oid]
-        #return json.loads(blob.data)
 
     def _instruction(self, commit):
         """
         Returns the instruction as a dict from a Commit.
         """
-        return json.loads(self.repo[commit.tree[INSTRUCTION].oid].data)
+        return json.loads(self.repo[commit.tree[DATA].oid].data)
 
     def _commit_diff(self, commit1, commit2):
         """
@@ -77,48 +69,42 @@ class Repo(object):
 
         return json_diff.Comparator().compare_dicts(instr1, instr2)
 
-    def commit(self, user, name, message, instruction, parents=None):
+    def commit(self, name, author_sig, committer_sig, message, data, parents=None):
         """
-        Commits the specified instruction dict to this repo.
+        Commits the dict `data` to this repo.
+
+        Defaults to the last commit for the dict of this name.
         """
-        offset_sec = time.altzone if time.daylight else time.timezone
-        sig = Signature(user,
-                        user.email if 'email' in user else user,
-                        int(time.time()),
-                        offset_sec / 60)
-        blob = self.repo.write(GIT_OBJ_BLOB, json.dumps(instruction))
+        blob = self.repo.write(GIT_OBJ_BLOB, json.dumps(data))
 
         # TreeBuilder doesn't support inserting into trees, so we roll our own
-        tree = self.repo.write(GIT_OBJ_TREE,
-                               '100644 %s\x00%s' % (INSTRUCTION, blob.oid))
+        tree = self.repo.write(GIT_OBJ_TREE, '100644 %s\x00%s' % (DATA, blob.oid))
 
-        # default to last commit for this instruction if no parents specified
+        # Default to last commit for this if no parents specified
         if not parents:
-            last_commit = self._last_commit(user, name)
+            last_commit = self._last_commit(name)
             parents = [last_commit] if last_commit else []
 
-        self.repo.create_commit(self._ref(user, name), sig, sig, message,
-                                tree, parents)
+        self.repo.create_commit(self._ref(name), author_sig,
+                                committer_sig, message, tree, parents)
 
-    def diff(self, user1, name1, user2, name2):
+    def diff(self, name1, name2):
         """
         Compute a JSON diff between two instructions.
         """
-        return self._commit_diff(self._last_commit(user1, name1),
-                                 self._last_commit(user2, name2))
+        return self._commit_diff(self._last_commit(name1),
+                                 self._last_commit(name2))
 
-    def merge(self, from_user, from_name, to_user, to_name):
+    def merge(self, author_sig, committer_sig, from_name, to_name):
         """
-        Merge from_user's from_name into to_user's to_name.  This will only
-        succeed if the to_user's to_name can be fast-forwarded, or if the
-        _update/_append/_remove dicts never intersect.
-
-        It's assumed that the committer is to_user.
+        Merge from_data into to_data.  This will
+        succeed if from_data can be fast-forwarded, or if the
+        modifications since their shared parent don't conflict.
 
         Returns True if the merge succeeded, False otherwise.
         """
-        from_commit = self._last_commit(from_user, from_name)
-        to_commit = self._last_commit(to_user, to_name)
+        from_commit = self._last_commit(from_name)
+        to_commit = self._last_commit(to_name)
 
         # No difference
         if from_commit.oid == to_commit.oid:
@@ -132,7 +118,7 @@ class Repo(object):
             to_parents.append(parent.oid)
             # No conflicting commits, fast forward this sucka by moving the ref
             if parent.oid == from_commit.oid:
-                self.repo.create_reference(self._ref(to_user, to_name), to_commit.oid)
+                self.repo.create_reference(self._ref(to_name), to_commit.oid)
                 return True
 
         # Do a merge if there were no overlapping changes
@@ -189,11 +175,12 @@ class Repo(object):
                 merged[k] = v
             for k, v in dict(from_diff['_append'].items() + to_diff['_append'].items()):
                 merged[k] = v
-            self.commit(to_user, to_name, 'Auto-merge', merged, [from_commit, to_commit])
+            self.commit(to_name, author_sig, committer_sig, 'Auto-merge',
+                        merged, [from_commit, to_commit])
 
-    def clone(self, from_user, from_name, to_user, to_name):
+    def clone(self, from_name, to_name):
         """
-        Clone from_user's from_name into to_user's to_name.
+        Clone from_name into to_name.
         """
-        self.repo.create_reference(self._ref(to_user, to_name),
-                                   self._last_commit(from_user, from_name).oid)
+        self.repo.create_reference(self._ref(to_name),
+                                   self._last_commit(from_name).oid)
