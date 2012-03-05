@@ -61,33 +61,18 @@ class InstructionMixin():
         user = self.db_conn.users.find_one({'name': name, 'deleted': False})
         return User(**user) if user else None
 
-    def find_instruction(self, owner, name):
+    def find_instructions(self, owner, deleted=False, **kwargs):
         """
-        Get the instruction for `owner` and `name`, both strings.
-        Returns the Instruction if it exists, None otherwise.
-        """
-        user = self._get_user(owner)
-        if not user:
-            return None
-        instruction = self.db_conn.instructions.find_one({
-                'owner.id': user.id,
-                'name': name,
-                'deleted': False })
-        return Instruction(**instruction) if instruction else None
-
-    def find_tagged_instructions(self, owner, tag):
-        """
-        Get all instructions for `owner` String with
-        the tag String `tag`.  Returns an array of Instructions,
-        of 0 length if there were none for `tag` in `owner`.
+        Get the non-deleted Instructions for user of name `owner` and optional
+        additional kwargs. Returns None if the user doesn't exist, an empty
+        list if the user has no instructions.
         """
         user = self._get_user(owner)
         if not user:
-            return None
-        instructions = self.db_conn.instructions.find({
-                    'owner.id': user.id,
-                    'tags': tag,
-                    'deleted': False})
+            return None 
+        kwargs['owner.id'] = user.id
+        kwargs['deleted'] = deleted
+        instructions = self.db_conn.instructions.find(kwargs)
         return [Instruction(**instruction) for instruction in instructions]
 
 class JsonMixin():
@@ -129,7 +114,7 @@ class IndexHandler(MustacheRendering):
                     context['error'] = 'You must specify user name to sign up'
                     status = 400
                 elif self.get_user(user):
-                    context['error'] = 'User name %s is already in use.' % user
+                    context['error'] = "User name '%s' is already in use." % user
                     status = 400
                 else:
                     self.save_user(user)
@@ -205,47 +190,88 @@ class UserHandler(MustacheRendering, UserMixin, JsonMixin):
         return self.render_template('user', user=user)
 
 
-class InstructionCollectionHandler(MustacheRendering, InstructionMixin, JsonMixin):
+class InstructionCollectionHandler(MustacheRendering, UserMixin, InstructionMixin, JsonMixin):
     """
     This handler provides access to all of a user's instructions.
     """
 
     def get(self, user):
-        pass
-
-    def post(self, owner_name, name):
         """
-        Allow for cloning.
+        Provide a listing of all this user's instructions.
         """
-        action = self.get_argument('action')
-        if action == 'clone':
-            template = self.get_template(self.get_user(owner_name), name)
-            if not template:
-                self.set_body('Template %s/%s does not exist.' % (owner_name, name))
-                return self.render(status_code=404)
+        context = { 'user': user }
+        instructions = self.find_instructions(user)
+        if instructions == None:
+            context['error'] = "User %s does not exist." % user
+            status = 404
+        else:
+            context['instructions'] = [i.instruction for i in instructions]
+            status = 200
 
-            repo_to_clone = self.get_repo(template)
+        if self.is_json_request():
+            self.set_body(json.dumps(context))
+            self.set_status(status)
+            return self.render()
+        else:
+            return self.render_template('instruction_collection',
+                                        _status_code=status,
+                                        **context)
 
-            template.id = None # Force mongo to create a new template.
-            self.persist_template(template) # This assigns a new ID.
+    def post(self, user):
+        """
+        Allow for cloning and creation.
+        """
+        context = {} 
+        if user != self.current_user:
+            context['error'] = 'You cannot modify these resources.'
+            status = 403
+        else:
+            action = self.get_argument('action')
+            if action == 'create': 
+                name = self.get_argument('name')
+                if self.create_instruction(user, name=name):
+                    status = 303
+                    self.headers['Location'] = name 
+                else:
+                    status = 409
+                    context['error'] = "There is already an instruction with that name"
+            elif action == 'clone': 
+                owner = self.get_argument('owner')
+                name = self.get_argument('name')
+                if self.clone_instruction(owner, user, name):
+                    status = 303
+                    self.headers['Location'] = name 
+                else:
+                    status = 409
+                    context['error'] = "Could not clone the instruction."
+            else:
+                context['error'] = 'Unknown action'
+                status = 400
 
-            repo_to_clone.clone(self.current_user.id, template.id)
-            return self.render(status_code=204)
-
+        if self.is_json_request():
+            self.set_body(json.dumps(context))
+            self.set_status(status)
+            return self.render()
+        else:
+            return self.render_template('created', _status_code=status, **context)
 
 class TagCollectionHandler(MustacheRendering, InstructionMixin, JsonMixin):
     """
     This handler provides access to all of a user's instructions with a certain
     tag.
     """
-    def get(self, owner, tag):
-        instructions = self.find_tagged_instructions(owner, tag)
-
+    def get(self, user, tag):
+        instructions = self.find_instructions(user, tag=tag)
         if self.is_json_request():
-            self.set_body(json.dumps(instructions))
+            self.set_body(json.dumps([i.instruction for i in instructions]))
             return self.render()
         else:
-            return self.render_template('tagged', instructions=instructions)
+            context = {
+                'tag': tag,
+                'user': user,
+                'instructions': instructions
+            }
+            return self.render_template('tagged', **context)
 
 
 class InstructionModelHandler(MustacheRendering, UserMixin, InstructionMixin, JsonMixin):
@@ -253,14 +279,14 @@ class InstructionModelHandler(MustacheRendering, UserMixin, InstructionMixin, Js
     This handler provides clients access to a single instruction by name.
     """
 
-    def get(self, owner, name):
+    def get(self, user, name):
         """
         Display a single instruction.
         """
         context = {}
-        instruction = self.find_instruction(owner, name)
-        if instruction:
-            context['instruction'] = instruction.to_python()
+        instructions = self.find_instructions(user, name=name)
+        if instructions:
+            context['instruction'] = instructions[0].to_python()
             status = 200
         else:
             context['error'] = "Instruction does not exist"
@@ -268,7 +294,7 @@ class InstructionModelHandler(MustacheRendering, UserMixin, InstructionMixin, Js
 
         if self.is_json_request():
             # for JSON, only include the instruction proper
-            self.set_body(json.dumps(context['instruction']))
+            self.set_body(json.dumps(instructions[0].instruction))
             self.set_status(status)
             return self.render()
         else:
@@ -355,7 +381,7 @@ class InstructionModelHandler(MustacheRendering, UserMixin, InstructionMixin, Js
 
 
 config['handler_tuples'] = [
-    (r'^/$', IndexHandler),
+    (r'^/?$', IndexHandler),
     (r'^/([\w\-]})/?$', UserHandler),
     (r'^/([\w\-]+)/instructions/?$', InstructionCollectionHandler),
     (r'^/([\w\-]+)/instructions/([\w\-]+)/?$', InstructionModelHandler),
