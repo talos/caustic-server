@@ -77,7 +77,7 @@ class Repo(object):
 
         return json_diff.Comparator().compare_dicts(instr1, instr2)
 
-    def commit(self, user, name, message, instruction):
+    def commit(self, user, name, message, instruction, parents=None):
         """
         Commits the specified instruction dict to this repo.
         """
@@ -91,11 +91,14 @@ class Repo(object):
         # TreeBuilder doesn't support inserting into trees, so we roll our own
         tree = self.repo.write(GIT_OBJ_TREE,
                                '100644 %s\x00%s' % (INSTRUCTION, blob.oid))
-        last_commit = self._last_commit(user, name)
-        self.repo.create_commit(self._ref(user, name),
-                                sig, sig, message,
-                                tree,
-                                [last_commit] if last_commit else [])
+
+        # default to last commit for this instruction if no parents specified
+        if not parents:
+            last_commit = self._last_commit(user, name)
+            parents = [last_commit] if last_commit else []
+
+        self.repo.create_commit(self._ref(user, name), sig, sig, message,
+                                tree, parents)
 
     def diff(self, user1, name1, user2, name2):
         """
@@ -109,6 +112,8 @@ class Repo(object):
         Merge from_user's from_name into to_user's to_name.  This will only
         succeed if the to_user's to_name can be fast-forwarded, or if the
         _update/_append/_remove dicts never intersect.
+
+        It's assumed that the committer is to_user.
 
         Returns True if the merge succeeded, False otherwise.
         """
@@ -125,18 +130,70 @@ class Repo(object):
         while len(parent.parents) == 1:
             parent = parent.parents[0]
             to_parents.append(parent.oid)
-            # No conflicting commits, fast forward this sucka
+            # No conflicting commits, fast forward this sucka by moving the ref
             if parent.oid == from_commit.oid:
                 self.repo.create_reference(self._ref(to_user, to_name), to_commit.oid)
                 return True
 
         # Do a merge if there were no overlapping changes
         # First, find the shared parent
-         
-        if len(self._commit_diff(from_commit, to_commit)) == 0:
+        shared_parent = None
+        for to_parent in to_parents:
+            parent = from_commit
+            while len(parent.parents) == 1:
+                parent = parent.parents[0]
+                if parent.oid == to_parent.oid:
+                    shared_parent = parent
+                    break
+            if shared_parent:
+                break
+        if not shared_parent:
+            return False # todo warn there's no shared parent
 
+        # Now, see if the diffs conflict
+        from_diff = self._commit_diff(shared_parent, from_commit)
+        to_diff = self._commit_diff(shared_parent, to_commit)
+        conflicts = {}
+        for from_mod_type, from_mods in from_diff:
+            for to_mod_type, to_mods in to_diff:
+                for from_mod_key, from_mod_value in from_mods:
+                    if from_mod_key in to_mods:
+                        to_mod_value = to_mods[from_mod_key]
+                        # if the mod type is the same, it's OK if the actual
+                        # modification was the same.
+                        if from_mod_type == to_mod_type:
+                            if from_mod_value == to_mods[from_mod_key]:
+                                pass
+                            else:
+                                conflicts[from_mod_key] = {
+                                    'from': { from_mod_type: from_mod_value },
+                                    'to'  : { to_mod_type: to_mod_value }
+                                }
+                        # if the mod type was not the same, it's a conflict no
+                        # matter what
+                        else:
+                            conflicts[from_mod_key] = {
+                                'from': { from_mod_type: from_mod_value },
+                                'to'  : { to_mod_type: to_mod_value }
+                            }
+
+        # No-go, the user's gonna have to figure this one out
+        if len(conflicts):
+            return False
+        # Sweet. we can apply all the diffs.
+        else:
+            merged = self._instruction(shared_parent)
+            for k, v in dict(from_diff['_remove'].items() + to_diff['_remove'].items()):
+                merged.pop(k)
+            for k, v in dict(from_diff['_update'].items() + to_diff['_update'].items()):
+                merged[k] = v
+            for k, v in dict(from_diff['_append'].items() + to_diff['_append'].items()):
+                merged[k] = v
+            self.commit(to_user, to_name, 'Auto-merge', merged, [from_commit, to_commit])
 
     def clone(self, from_user, from_name, to_user, to_name):
         """
         Clone from_user's from_name into to_user's to_name.
         """
+        self.repo.create_reference(self._ref(to_user, to_name),
+                                   self._last_commit(from_user, from_name).oid)
