@@ -18,15 +18,10 @@ from config     import config
 from gitdict    import DictRepository, DictAuthor
 from models     import User
 
-#
-# MIXINS
-#
-class UserMixin(UserHandlingMixin):
+class Handler(MustacheRendering, UserHandlingMixin):
     """
-    Use this mixin to leverage Brubeck's UserHandlingMixin.  Also
-    provides methods to get and persist users.
+    An extended handler.
     """
-
     def _get_user(self, name):
         """
         Get the User document for a given name, or None if there is none.
@@ -55,22 +50,19 @@ class UserMixin(UserHandlingMixin):
         """
         self.delete_cookie('session')
 
-
-class JsonMixin():
-    """
-    Use this mixin to repurpose handlers for both JSON and non-JSON responses.
-    """
-
     def is_json_request(self):
         """
         Returns True if this was a request for JSON, False otherwise.
         """
-        return self.message.headers['Accept'] == 'application/json'
+        # print 'IS JSON REQUEST:'
+        # print self.message.headers
+        # print 'IS JSON REQUEST:'
+        return self.message.headers.get('accept').rfind('application/json') > -1
 
 #
 # HANDLERS
 #
-class IndexHandler(MustacheRendering):
+class IndexHandler(Handler):
     def trace(self):
         """
         Trace provides ping-like functionality, letting clients
@@ -109,7 +101,7 @@ class IndexHandler(MustacheRendering):
                 context['error'] = 'You are already logged in as %s' % self.current_user.name
                 status = 403
 
-            user = self.db_conn.find_one({'name': self.get_argument('user')})
+            user = self.db_conn.users.find_one({'name': self.get_argument('user')})
             if user:
                 self.set_current_user(User(**user))
                 status = 200
@@ -132,7 +124,7 @@ class IndexHandler(MustacheRendering):
             return self.render_template('user', _status_code=status, **context)
 
 
-class UserHandler(MustacheRendering, UserMixin, JsonMixin):
+class UserHandler(Handler):
 
     def delete(self, user):
         """
@@ -150,7 +142,7 @@ class UserHandler(MustacheRendering, UserMixin, JsonMixin):
             if token == self.get_cookie('token', None, self.application.cookie_secret):
                 self.delete_cookie('token')
                 user.deleted = True
-                self.db_conn.save(user.to_python())
+                self.db_conn.users.save(user.to_python())
                 status = 204
             else:
                 self.set_cookie('token', token, self.application.cookie_secret)
@@ -171,7 +163,7 @@ class UserHandler(MustacheRendering, UserMixin, JsonMixin):
         return self.render_template('user', user=user)
 
 
-class InstructionCollectionHandler(MustacheRendering, UserMixin, JsonMixin):
+class InstructionCollectionHandler(Handler):
     """
     This handler provides access to all of a user's instructions.
     """
@@ -229,7 +221,7 @@ class InstructionCollectionHandler(MustacheRendering, UserMixin, JsonMixin):
                     context['error'] = "You already have an instruction with that name"
                 elif name in owner.instructions:
                     user.instructions[name] = owner.instructions[name]
-                    self.db_conn.save(user.to_python())
+                    self.db_conn.users.save(user.to_python())
                     self.repo.create('/'.join(user, name), user.instructions[name])
                     status = 303 # forward to page for instruction
                     self.headers['Location'] = name
@@ -247,7 +239,7 @@ class InstructionCollectionHandler(MustacheRendering, UserMixin, JsonMixin):
         else:
             return self.render_template('created', _status_code=status, **context)
 
-class TagCollectionHandler(MustacheRendering, UserMixin, JsonMixin):
+class TagCollectionHandler(Handler):
     """
     This handler provides access to all of a user's instructions with a certain
     tag.
@@ -263,14 +255,14 @@ class TagCollectionHandler(MustacheRendering, UserMixin, JsonMixin):
             context['error'] = "No user %s" % user_name
 
         if self.is_json_request():
-            self.set_body(json.dumps(context['instructions']))
+            self.set_body(json.dumps(context['instructions'] if 'instructions' in context else context))
             self.set_status(status)
             return self.render()
         else:
             return self.render_template('tagged', _status_code=status, **context)
 
 
-class InstructionModelHandler(MustacheRendering, UserMixin, JsonMixin):
+class InstructionModelHandler(Handler):
     """
     This handler provides clients access to a single instruction by name.
     """
@@ -289,7 +281,7 @@ class InstructionModelHandler(MustacheRendering, UserMixin, JsonMixin):
             status = 404
 
         if self.is_json_request():
-            self.set_body(context['instruction'])
+            self.set_body(context['instruction'] if 'instruction' in context else context)
             self.set_status(status)
             return self.render()
         else:
@@ -317,7 +309,7 @@ class InstructionModelHandler(MustacheRendering, UserMixin, JsonMixin):
                     git_dict = repo.get(key)
                     git_dict.clear()
                     git_dict.update(instruction)
-                    git_dict.commit(author=DictAuthor(user.id, user.id))
+                    git_dict.commit(author=DictAuthor(str(user.id), str(user.id)).signature())
                 else:
                     repo.create(key, instruction)
                 status = 201
@@ -331,8 +323,7 @@ class InstructionModelHandler(MustacheRendering, UserMixin, JsonMixin):
             context['instruction'] = instruction
 
         if self.is_json_request():
-            # for JSON, only include the instruction proper
-            self.set_body(json.dumps(context['instruction']))
+            self.set_body(json.dumps(context))
             self.set_status(status)
             return self.render()
         else:
@@ -352,7 +343,7 @@ class InstructionModelHandler(MustacheRendering, UserMixin, JsonMixin):
         else:
             if name in user.instructions:
                 user.instructions.pop(name)
-                self.db_conn.save(user.to_python())
+                self.db_conn.users.save(user.to_python())
                 status = 200
             else:
                 status['error'] = "Instruction does not exist"

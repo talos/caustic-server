@@ -43,7 +43,7 @@ class TestServerJSON(unittest.TestCase):
         JSON.
         """
         self.created_accounts = []
-        self.s = requests.Session(headers={"Accept":"application/json"})
+        self.s = requests.session(headers={"accept":"application/json text/javascript"})
 
     def tearDown(self):
         """
