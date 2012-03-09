@@ -4,5 +4,6 @@
 *.swp
 *.sqlite
 run/*
+git/*
 log/*
 templates/*
