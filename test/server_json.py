@@ -86,13 +86,22 @@ class TestServerJSON(unittest.TestCase):
         r = self.s.get("%s/lksdjflksdjg" % HOST)
         self.assertEqual(404, r.status_code)
 
-    def test_create_valid_instruction(self):
+    def test_post_valid_instruction(self):
+        self._signup('fuller')
+        r = self.s.post("%s/fuller/instructions/" % HOST, data={
+            'name': 'manhattan-bubble',
+            'instruction': LOAD_GOOGLE
+        })
+        self.assertEqual(303, r.status_code)
+        self.assertEqual('manhattan-bubble', r.headers['Location'])
+
+    def test_put_valid_instruction(self):
         """
         Create an instruction on the server using HTTP PUT.
         """
         self._signup('fuller')
         r = self.s.put("%s/fuller/instructions/manhattan-bubble" % HOST, data={
-            LOAD_GOOGLE
+            'instruction': LOAD_GOOGLE
         })
         self.assertEqual(201, r.status_code)
 
@@ -101,9 +110,9 @@ class TestServerJSON(unittest.TestCase):
         Ensure the server rejects an invalid instruction.
         """
         self._signup('chiang')
-        r = self.s.put("%s/chiang/instructions/politics" % HOST, data=json.dumps({
-            'foo':'bar'
-        }))
+        r = self.s.put("%s/chiang/instructions/politics" % HOST, data={
+            'instruction': json.dumps({ 'foo':'bar' })
+        })
         self.assertEqual(400, r.status_code)
 
     def test_not_logged_in_no_create(self):
@@ -113,7 +122,9 @@ class TestServerJSON(unittest.TestCase):
         """
         self._signup('lennon')
         self._logout()
-        r = self.s.put("%s/lennon/instructions/nope" % HOST, data=LOAD_GOOGLE)
+        r = self.s.put("%s/lennon/instructions/nope" % HOST, data={
+            'instruction': LOAD_GOOGLE
+        })
         self.assertEqual(401, r.status_code)
 
     def test_get_instruction_logged_in(self):
@@ -121,7 +132,9 @@ class TestServerJSON(unittest.TestCase):
         Get an instruction on the server using HTTP GET while logged in.
         """
         self._signup('jacobs')
-        self.s.put("%s/jacobs/instructions/life-n-death" % HOST, data=LOAD_GOOGLE)
+        self.s.put("%s/jacobs/instructions/life-n-death" % HOST, data={
+            'instruction': LOAD_GOOGLE
+        })
 
         r = self.s.get("%s/jacobs/instruction/life-n-death" % HOST)
         self.assertEqual(200, r.status_code)
@@ -132,7 +145,9 @@ class TestServerJSON(unittest.TestCase):
         Get a instruction on the server using HTTP GET while not logged in.
         """
         self._signup('jacobs')
-        self.s.put("%s/jacobs/instructions/life-n-death" % HOST, data=LOAD_GOOGLE)
+        self.s.put("%s/jacobs/instructions/life-n-death" % HOST, data={
+            'instruction': LOAD_GOOGLE
+        })
         self._logout()
 
         r = self.s.get("%s/jacobs/instructions/life-n-death" % HOST)
@@ -144,10 +159,14 @@ class TestServerJSON(unittest.TestCase):
         Update an instruction by replacing it with PUT.
         """
         self._signup('moses')
-        self.s.put("%s/moses/instructions/bqe" % HOST, data=LOAD_GOOGLE)
+        self.s.put("%s/moses/instructions/bqe" % HOST, data={
+            'instruction': LOAD_GOOGLE
+        })
 
         load_nytimes = json.dumps({"load":"http://www.nytimes.com/"}) 
-        self.s.put("%s/moses/instructions/bqe" % HOST, data=load_nytimes)
+        self.s.put("%s/moses/instructions/bqe" % HOST, data={
+            'instruction': load_nytimes
+        })
 
         r = self.s.get("%s/moses/instructions/bqe" % HOST)
         self.assertEqual(200, r.status_code)
@@ -159,8 +178,12 @@ class TestServerJSON(unittest.TestCase):
         links to the instructions.
         """
         self._signup('trog-dor')
-        self.s.put("%s/trog-dor/instructions/pillaging" % HOST, data=LOAD_GOOGLE)
-        self.s.put("%s/trog-dor/instructions/burning" % HOST, data=LOAD_GOOGLE)
+        self.s.put("%s/trog-dor/instructions/pillaging" % HOST, data={
+            'instruction': LOAD_GOOGLE
+        })
+        self.s.put("%s/trog-dor/instructions/burning" % HOST, data={
+            'instruction': LOAD_GOOGLE
+        })
         self.s.put("%s/trog-dor/instructions/pillaging/tags/burnination" % HOST)
         self.s.put("%s/trog-dor/instructions/burning/tags/burnination" % HOST)
 
@@ -186,7 +209,9 @@ class TestServerJSON(unittest.TestCase):
         Delete a tag.
         """
         self._signup('fashionista')
-        self.s.put("%s/fashionista/instructions/ray-bans" % HOST, data=LOAD_GOOGLE)
+        self.s.put("%s/fashionista/instructions/ray-bans" % HOST, data={
+            'instruction': LOAD_GOOGLE
+        })
         self.s.put("%s/fashionista/instructions/ray-bans/tags/trendy" % HOST)
         self.s.delete("%s/fashionista/instructions/ray-bans/tags/trendy" % HOST)
 
@@ -198,7 +223,9 @@ class TestServerJSON(unittest.TestCase):
         One user clones another user's instruction.  Should keep JSON and tags.
         """
         self._signup('muddy')
-        self.s.put("%s/muddy/instructions/delta-blues" % HOST, data=LOAD_GOOGLE)
+        self.s.put("%s/muddy/instructions/delta-blues" % HOST, data={
+            'instruction': LOAD_GOOGLE
+        })
         self.s.put("%s/muddy/instructions/delta-blues/tags/guitar" % HOST)
         self._logout()
 
@@ -225,7 +252,9 @@ class TestServerJSON(unittest.TestCase):
         """
         self._signup('barrett')
         data = json.dumps('{"load":"http://www.saucerful.com/"}')
-        self.s.put("%s/barrett/instructions/saucerful" % HOST, data=data)
+        self.s.put("%s/barrett/instructions/saucerful" % HOST, data={
+            'instruction': data
+        })
         self._logout()
 
         self._signup('gilmour')
@@ -236,7 +265,9 @@ class TestServerJSON(unittest.TestCase):
 
         self._login('barrett')
         data = json.dumps('{"load":"http://www.jugband.com/"}')
-        self.s.put("%s/barrett/instructions/saucerful" % HOST, data=data)
+        self.s.put("%s/barrett/instructions/saucerful" % HOST, data={
+            'instruction': data
+        })
         self._logout()
 
         self._login('gilmour')

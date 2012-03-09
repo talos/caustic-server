@@ -15,8 +15,8 @@ from brubeck.auth import UserHandlingMixin
 
 from templating import MustacheRendering
 from config     import config
-from vcs        import Repository
-from models     import Instruction, User
+from gitdict    import DictRepository, DictAuthor
+from models     import User
 
 #
 # MIXINS
@@ -26,6 +26,13 @@ class UserMixin(UserHandlingMixin):
     Use this mixin to leverage Brubeck's UserHandlingMixin.  Also
     provides methods to get and persist users.
     """
+
+    def _get_user(self, name):
+        """
+        Get the User document for a given name, or None if there is none.
+        """
+        user = self.db_conn.users.find_one({'name': name, 'deleted': False})
+        return User(**user) if user else None
 
     def get_current_user(self):
         """
@@ -48,32 +55,6 @@ class UserMixin(UserHandlingMixin):
         """
         self.delete_cookie('session')
 
-
-class InstructionMixin():
-    """
-    Use this mixin with to get and persist instructions to the database.
-    """
-
-    def _get_user(self, name):
-        """
-        Get the User document for a given name, or None if there is none.
-        """
-        user = self.db_conn.users.find_one({'name': name, 'deleted': False})
-        return User(**user) if user else None
-
-    def find_instructions(self, owner, deleted=False, **kwargs):
-        """
-        Get the non-deleted Instructions for user of name `owner` and optional
-        additional kwargs. Returns None if the user doesn't exist, an empty
-        list if the user has no instructions.
-        """
-        user = self._get_user(owner)
-        if not user:
-            return None 
-        kwargs['owner.id'] = user.id
-        kwargs['deleted'] = deleted
-        instructions = self.db_conn.instructions.find(kwargs)
-        return [Instruction(**instruction) for instruction in instructions]
 
 class JsonMixin():
     """
@@ -106,7 +87,7 @@ class IndexHandler(MustacheRendering):
         if action == 'signup':
             if self.current_user:
                 context['error'] = 'You are already signed up.'
-                status = 400 
+                status = 400
             else:
                 user = self.get_argument('user')
 
@@ -182,7 +163,7 @@ class UserHandler(MustacheRendering, UserMixin, JsonMixin):
             return self.render()
         else:
             return self.render_template('user', _status_code=status, **context)
-            
+
     def get(self, user):
         """
         Get the user's homepage.
@@ -190,23 +171,23 @@ class UserHandler(MustacheRendering, UserMixin, JsonMixin):
         return self.render_template('user', user=user)
 
 
-class InstructionCollectionHandler(MustacheRendering, UserMixin, InstructionMixin, JsonMixin):
+class InstructionCollectionHandler(MustacheRendering, UserMixin, JsonMixin):
     """
     This handler provides access to all of a user's instructions.
     """
 
-    def get(self, user):
+    def get(self, user_name):
         """
         Provide a listing of all this user's instructions.
         """
-        context = { 'user': user }
-        instructions = self.find_instructions(user)
-        if instructions == None:
-            context['error'] = "User %s does not exist." % user
-            status = 404
-        else:
-            context['instructions'] = [i.instruction for i in instructions]
+        context = { 'user': user_name }
+        user = self._get_user(user_name)
+        if user:
+            context['instructions'] = user.instructions
             status = 200
+        else:
+            context['error'] = "User %s does not exist." % user_name
+            status = 404
 
         if self.is_json_request():
             self.set_body(json.dumps(context))
@@ -217,30 +198,41 @@ class InstructionCollectionHandler(MustacheRendering, UserMixin, InstructionMixi
                                         _status_code=status,
                                         **context)
 
-    def post(self, user):
+    def post(self, user_name):
         """
         Allow for cloning and creation.
         """
-        context = {} 
+        context = {}
+        user = self._get_user(user_name)
         if user != self.current_user:
             context['error'] = 'You cannot modify these resources.'
             status = 403
         else:
             action = self.get_argument('action')
-            if action == 'create': 
+            if action == 'create':
                 name = self.get_argument('name')
-                if self.create_instruction(user, name=name):
-                    status = 303
-                    self.headers['Location'] = name 
-                else:
+                if name in user.instructions:
                     status = 409
                     context['error'] = "There is already an instruction with that name"
-            elif action == 'clone': 
-                owner = self.get_argument('owner')
-                name = self.get_argument('name')
-                if self.clone_instruction(owner, user, name):
+                else:
                     status = 303
-                    self.headers['Location'] = name 
+                    self.headers['Location'] = name
+            elif action == 'clone':
+                owner = self._get_user(self.get_argument('owner'))
+                name = self.get_argument('name')
+
+                if not owner:
+                    status = 404
+                    context['error'] = "There is no user %s" % owner
+                elif name in user.instructions:
+                    status = 409
+                    context['error'] = "You already have an instruction with that name"
+                elif name in owner.instructions:
+                    user.instructions[name] = owner.instructions[name]
+                    self.db_conn.save(user.to_python())
+                    self.repo.create('/'.join(user, name), user.instructions[name])
+                    status = 303 # forward to page for instruction
+                    self.headers['Location'] = name
                 else:
                     status = 409
                     context['error'] = "Could not clone the instruction."
@@ -255,46 +247,49 @@ class InstructionCollectionHandler(MustacheRendering, UserMixin, InstructionMixi
         else:
             return self.render_template('created', _status_code=status, **context)
 
-class TagCollectionHandler(MustacheRendering, InstructionMixin, JsonMixin):
+class TagCollectionHandler(MustacheRendering, UserMixin, JsonMixin):
     """
     This handler provides access to all of a user's instructions with a certain
     tag.
     """
-    def get(self, user, tag):
-        instructions = self.find_instructions(user, tag=tag)
+    def get(self, user_name, tag):
+        user = self._get_user(user_name)
+        context = {'tag': tag, 'user': user_name}
+        if user:
+            status = 200
+            context['instructions'] = self.find_instructions(user, tag=tag)
+        else:
+            status = 404
+            context['error'] = "No user %s" % user_name
+
         if self.is_json_request():
-            self.set_body(json.dumps([i.instruction for i in instructions]))
+            self.set_body(json.dumps(context['instructions']))
+            self.set_status(status)
             return self.render()
         else:
-            context = {
-                'tag': tag,
-                'user': user,
-                'instructions': instructions
-            }
-            return self.render_template('tagged', **context)
+            return self.render_template('tagged', _status_code=status, **context)
 
 
-class InstructionModelHandler(MustacheRendering, UserMixin, InstructionMixin, JsonMixin):
+class InstructionModelHandler(MustacheRendering, UserMixin, JsonMixin):
     """
     This handler provides clients access to a single instruction by name.
     """
 
-    def get(self, user, name):
+    def get(self, user_name, name):
         """
         Display a single instruction.
         """
         context = {}
-        instructions = self.find_instructions(user, name=name)
-        if instructions:
-            context['instruction'] = instructions[0].to_python()
+        user = self._get_user(user_name)
+        if user and name in user.instructions:
+            context['instruction'] = user.instruction[name].to_python()
             status = 200
         else:
             context['error'] = "Instruction does not exist"
             status = 404
 
         if self.is_json_request():
-            # for JSON, only include the instruction proper
-            self.set_body(json.dumps(instructions[0].instruction))
+            self.set_body(context['instruction'])
             self.set_status(status)
             return self.render()
         else:
@@ -304,36 +299,29 @@ class InstructionModelHandler(MustacheRendering, UserMixin, InstructionMixin, Js
         """
         Update a single instruction, creating it if it doesn't exist.
         """
-        user = self.current_user 
+        user = self.current_user
         context = {}
         if not user:
-            context['error'] = "You are not logged in."    
+            context['error'] = "You are not logged in."
             status = 403
         elif owner != user.name:
             context['error'] = 'This is not your template.'
             status = 403
         else:
-            instruction = self.find_instruction(user, name) 
             try:
-                instruction = self.find_instruction(user, name)
-                if instruction:
-                    commit = self.get_argument('commit', 'First commit')
+                instruction = json.loads(self.get_argument('instruction'))
+
+                repo = self.application.repo
+                key = '/'.join([owner, name])
+                if repo.has(key):
+                    git_dict = repo.get(key)
+                    git_dict.clear()
+                    git_dict.update(instruction)
+                    git_dict.commit(author=DictAuthor(user.id, user.id))
                 else:
-                    commit = self.get_argument('commit', '')
-                    instruction = Instruction(name=name, owner=user)
-
-                instruction.tags = json.loads(self.get_argument('tags', '[]')),
-                instruction.instruction = json.loads(self.get_argument('instruction'))
-
-                repo = Repository(config['vcs_dir'],
-                          str(instruction.owner.id),
-                          str(instruction.id))
-                repo.commit(json.dumps(instruction.instruction,
-                                       indent=4,
-                                       sort_keys=True),
-                           commit)
-                self.save_instruction(instruction)
-
+                    repo.create(key, instruction)
+                status = 201
+                context['instruction'] = instruction
             except ShieldException as error:
                 context['error'] = "Invalid instruction: %s." % error
                 status = 400
@@ -352,8 +340,7 @@ class InstructionModelHandler(MustacheRendering, UserMixin, InstructionMixin, Js
 
     def delete(self, owner, name):
         """
-        Hide a single template from view.  Does not actually wipe the
-        repo, but sets a 'deleted' flag for the template.
+        Delete an instruction.
         """
         user = self.current_user
         context = {}
@@ -363,21 +350,20 @@ class InstructionModelHandler(MustacheRendering, UserMixin, InstructionMixin, Js
             context['error'] = "You cannot delete someone else's template"
             status = 403
         else:
-            instruction = self.find_instruction(owner, name)
-            if instruction:
-                instruction.deleted = True
-                self.db_conn.instructions.save(instruction)
+            if name in user.instructions:
+                user.instructions.pop(name)
+                self.db_conn.save(user.to_python())
                 status = 200
             else:
                 status['error'] = "Instruction does not exist"
                 status = 404
 
         if self.is_json_request():
-            self.set_body(json.dumps(context['instruction']))
+            self.set_body(json.dumps(context))
             self.set_status(status)
             return self.render()
         else:
-            return self.render_template('instruction', _status_code=status, **context)
+            return self.render_template('delete_instruction', _status_code=status, **context)
 
 
 config['handler_tuples'] = [
@@ -388,4 +374,5 @@ config['handler_tuples'] = [
     (r'^/([\w\-]+)/tagged/([\w\-]+)/?$', TagCollectionHandler)]
 
 app = Brubeck(**config)
+app.repo = DictRepository(config['git_dir'])
 app.run()

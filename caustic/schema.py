@@ -31,7 +31,7 @@ LOAD_PROPERTIES = {
         "type" : "string",
         "enum" : ["head", "get", "post"],
         "dependencies" : "load",
-        "required" : False 
+        "required" : False
     },
     "posts"   : {
         "description" : "Post data for this load.  Can either be name-value pairs or a string.  Mustache substitutions are performed either way.",

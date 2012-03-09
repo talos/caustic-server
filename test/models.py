@@ -28,7 +28,7 @@ class TestUser(unittest.TestCase):
         self.assertFalse(u.deleted)
 
 
-class TestInstruction(unittest.TestCase):
+class TestInstructionsField(unittest.TestCase):
 
     def setUp(self):
         """
@@ -54,9 +54,5 @@ class TestInstruction(unittest.TestCase):
         Should validate if there is a valid instruction, owner, and name.
         """
         self.owner.instructions['valid'] = {'load':'google.com'}
-        self.owner.validate() # would throw an exception to fail test.
+        self.owner.validate()
 
-
-# Primitive runner!
-if __name__ == '__main__':
-    unittest.main()
