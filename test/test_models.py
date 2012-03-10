@@ -27,6 +27,26 @@ class TestUser(unittest.TestCase):
         u = User(name="exists")
         self.assertFalse(u.deleted)
 
+    def test_deserialize(self):
+        """Deserialize a complex user.
+        """
+        u = User(**{
+            'name': 'talos',
+            'deleted': False,
+            'instructions': [{
+                'name': 'grab some stuff',
+                'tags': ['utility', 'cool'],
+                'instruction': {'load': 'google', 'then': {'find': 'stuff'}}
+            }]
+        })
+        u.validate()
+        self.assertEqual('talos', u.name)
+        self.assertEqual(False, u.deleted)
+        self.assertEqual(
+            [InstructionDocument(name='grab some stuff',
+                                 tags=['utility', 'cool'],
+                                 instruction={'load': 'google', 'then': {'find': 'stuff'}})],
+            u.instructions)
 
 class TestInstructionDocument(unittest.TestCase):
 

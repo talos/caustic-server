@@ -54,7 +54,6 @@ class User(Document):
     """
     id = ObjectIdField(id_field=True)
     name = StringField(required=True)
-    delete_token = StringField()
     deleted = BooleanField(default=False)
     instructions = ListField(EmbeddedDocumentField(InstructionDocument))
 
