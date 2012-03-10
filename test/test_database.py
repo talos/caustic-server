@@ -4,7 +4,7 @@ Test the database.  Mongod must be running.
 
 import pymongo
 import unittest
-from caustic.models import User, Instruction
+from caustic.models import User
 
 HOST = "http://localhost:6767"
 LOAD_GOOGLE = '{"load":"http://www.google.com/"}'
@@ -22,7 +22,6 @@ class TestDatabase(unittest.TestCase):
         user/instruction fixtures.
         """
         self.users = TestDatabase.db.users
-        self.instructions = TestDatabase.db.instructions
 
     def tearDown(self):
         """Drop collections.
@@ -48,21 +47,22 @@ class TestDatabase(unittest.TestCase):
         self.users.save(User(name="sally").to_python())
         self.assertIsNotNone(self.users.find_one({'name': 'sally'}))
 
-    def test_save_instruction_assigns_id(self):
+    def test_save_instruction(self):
         """Saving a instruction should assign an id.
         """
         bobbie = User(name="bobbie")
+        bobbie.instructions['foo'] = LOAD_GOOGLE
         self.users.save(bobbie.to_python())
-        t = Instruction(owner=bobbie, name="instruction", json=LOAD_GOOGLE)
-        self.assertIsNotNone(self.instructions.save(t.to_python()))
+        self.assertEqual(LOAD_GOOGLE, self.users.find({'
 
     def test_get_instructions_by_owner_name(self):
         """
         Get an owner's instructions.
         """
         chris = User(name='chris')
-        self.instructions.save(Instruction(owner=chris, name="first", json=LOAD_GOOGLE).to_python())
-        self.instructions.save(Instruction(owner=chris, name="second", json=LOAD_GOOGLE).to_python())
+        chris.instructions['first'] = LOAD_GOOGLE
+        chris.instructions['second'] = LOAD_GOOGLE
+        self.users.save(chris.to_python())
         self.assertEqual(2, self.instructions.find({'owner.name': 'chris'}).count())
 
     def test_get_instructions_by_tag(self):

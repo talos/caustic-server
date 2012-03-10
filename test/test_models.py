@@ -3,7 +3,7 @@ Test caustic/models.py .
 """
 
 import unittest
-from caustic.models import User
+from caustic.models import User, InstructionDocument, InstructionField
 from dictshield.base import ShieldException
 
 class TestUser(unittest.TestCase):
@@ -28,31 +28,46 @@ class TestUser(unittest.TestCase):
         self.assertFalse(u.deleted)
 
 
-class TestInstructionsField(unittest.TestCase):
+class TestInstructionDocument(unittest.TestCase):
 
-    def setUp(self):
+    def test_requires_name(self):
         """
-        Provide with a convenient owner and valid json.
+        Needs a name.
         """
-        self.owner = User(name="pwner")
-
-    def test_requires_string_key(self):
-        self.owner.instructions[100] = {"load":"google.com"}
+        doc = InstructionDocument(instruction={"load": "google.com"})
         with self.assertRaises(ShieldException):
-            self.owner.validate()
+            doc.validate()
+
+    def test_requires_instruction(self):
+        """
+        Needs an instruction.
+        """
+        doc = InstructionDocument(name='name')
+        with self.assertRaises(ShieldException):
+            doc.validate()
 
     def test_requires_valid_instruction(self):
         """
         Should not validate without valid instruction.
         """
-        self.owner.instructions['google'] = {"foo":"bar"}
+        doc = InstructionDocument(name='name',instruction={"foo":"bar"})
         with self.assertRaises(ShieldException):
-            self.owner.validate()
+            doc.validate()
 
     def test_validates(self):
         """
-        Should validate if there is a valid instruction, owner, and name.
+        Should validate if there is a valid instruction and name.
         """
-        self.owner.instructions['valid'] = {'load':'google.com'}
-        self.owner.validate()
+        doc = InstructionDocument(name='name',instruction={"load":"google.com"})
+        doc.validate()
 
+class TestInstructionField(unittest.TestCase):
+
+    def test_invalid(self):
+        for invalid in [7,{'foo': 'bar'}]:
+            with self.assertRaises(ShieldException):
+                InstructionField().validate(invalid)
+
+    def test_valid(self):
+        for valid in ['foo', ['foo', 'bar'], {'load':'google.com'}, {'find':'.*'}]:
+            InstructionField().validate(valid)
