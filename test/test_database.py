@@ -6,7 +6,6 @@ import pymongo
 import unittest
 from caustic.models import User
 
-HOST = "http://localhost:6767"
 LOAD_GOOGLE = '{"load":"http://www.google.com/"}'
 
 class TestDatabase(unittest.TestCase):
@@ -27,7 +26,6 @@ class TestDatabase(unittest.TestCase):
         """Drop collections.
         """
         self.users.drop()
-        self.instructions.drop()
 
     def test_save_user_assigns_id(self):
         """Saving a user should assign an id.
@@ -47,58 +45,57 @@ class TestDatabase(unittest.TestCase):
         self.users.save(User(name="sally").to_python())
         self.assertIsNotNone(self.users.find_one({'name': 'sally'}))
 
-    def test_save_instruction(self):
-        """Saving a instruction should assign an id.
+    def test_find_instruction_by_name(self):
+        """Saving an instruction.
         """
-        bobbie = User(name="bobbie")
-        bobbie.instructions['foo'] = LOAD_GOOGLE
+        bobbie = User(name="bobbie", instructions=[{'name': 'google', 'instruction': LOAD_GOOGLE}])
         self.users.save(bobbie.to_python())
-        self.assertEqual(LOAD_GOOGLE, self.users.find({'
+        cursor = self.users.find({'name':'bobbie', 'instructions.name': 'google'})
+        self.assertEqual(1, cursor.count())
+        self.assertDictContainsSubset({'name':'google',
+                                       'instruction': LOAD_GOOGLE}, cursor[0])
 
-    def test_get_instructions_by_owner_name(self):
-        """
-        Get an owner's instructions.
-        """
-        chris = User(name='chris')
-        chris.instructions['first'] = LOAD_GOOGLE
-        chris.instructions['second'] = LOAD_GOOGLE
-        self.users.save(chris.to_python())
-        self.assertEqual(2, self.instructions.find({'owner.name': 'chris'}).count())
+   #  def test_get_instructions_by_owner_name(self):
+   #      """
+   #      Get an owner's instructions.
+   #      """
+   #      chris = User(name='chris')
+   #      chris.instructions['first'] = LOAD_GOOGLE
+   #      chris.instructions['second'] = LOAD_GOOGLE
+   #      self.users.save(chris.to_python())
+   #      self.assertEqual(2, self.instructions.find({'owner.name': 'chris'}).count())
 
-    def test_get_instructions_by_tag(self):
-        """
-        Get instructions by their tag.
-        """
-        tuten = User(name='tuten')
-        mao = User(name='mao')
-        self.instructions.save(Instruction(owner=tuten,
-                                     name="fiction",
-                                     tags=['long march'],
-                                     json=LOAD_GOOGLE).to_python())
-        self.instructions.save(Instruction(owner=mao,
-                                     name="works",
-                                     tags=['long march'],
-                                     json=LOAD_GOOGLE).to_python())
-        self.assertEqual(2, self.instructions.find({'tags':'long march'}).count())
+   #  def test_get_instructions_by_tag(self):
+   #      """
+   #      Get instructions by their tag.
+   #      """
+   #      tuten = User(name='tuten')
+   #      mao = User(name='mao')
+   #      self.instructions.save(Instruction(owner=tuten,
+   #                                   name="fiction",
+   #                                   tags=['long march'],
+   #                                   json=LOAD_GOOGLE).to_python())
+   #      self.instructions.save(Instruction(owner=mao,
+   #                                   name="works",
+   #                                   tags=['long march'],
+   #                                   json=LOAD_GOOGLE).to_python())
+   #      self.assertEqual(2, self.instructions.find({'tags':'long march'}).count())
 
-    def test_get_instructions_by_tag_and_name(self):
-        """
-        Get instructions by their tag and name.
-        """
-        tuten = User(name='tuten')
-        mao = User(name='mao')
-        self.instructions.save(Instruction(owner=tuten,
-                                     name="fiction",
-                                     tags=['long march'],
-                                     json=LOAD_GOOGLE).to_python())
-        self.instructions.save(Instruction(owner=mao,
-                                     name="works",
-                                     tags=['long march'],
-                                     json=LOAD_GOOGLE).to_python())
-        self.assertEqual(1, self.instructions.find({'tags':'long march', 'owner.name': 'mao'}).count())
-        t = Instruction(**self.instructions.find_one({'tags':'long march', 'owner.name':'mao'}))
-        self.assertEqual('works', t.name)
+   #  def test_get_instructions_by_tag_and_name(self):
+   #      """
+   #      Get instructions by their tag and name.
+   #      """
+   #      tuten = User(name='tuten')
+   #      mao = User(name='mao')
+   #      self.instructions.save(Instruction(owner=tuten,
+   #                                   name="fiction",
+   #                                   tags=['long march'],
+   #                                   json=LOAD_GOOGLE).to_python())
+   #      self.instructions.save(Instruction(owner=mao,
+   #                                   name="works",
+   #                                   tags=['long march'],
+   #                                   json=LOAD_GOOGLE).to_python())
+   #      self.assertEqual(1, self.instructions.find({'tags':'long march', 'owner.name': 'mao'}).count())
+   #      t = Instruction(**self.instructions.find_one({'tags':'long march', 'owner.name':'mao'}))
+   #      self.assertEqual('works', t.name)
 
-# Primitive runner!
-if __name__ == '__main__':
-    unittest.main()

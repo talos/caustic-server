@@ -3,6 +3,7 @@ Test caustic/models.py .
 """
 
 import unittest
+import bson
 from caustic.models import User, InstructionDocument, InstructionField
 from dictshield.base import ShieldException
 
@@ -27,34 +28,56 @@ class TestUser(unittest.TestCase):
         u = User(name="exists")
         self.assertFalse(u.deleted)
 
-    def test_deserialize(self):
-        """Deserialize a complex user.
-        """
-        u = User(**{
-            'name': 'talos',
-            'deleted': False,
-            'instructions': [{
-                'name': 'grab some stuff',
-                'tags': ['utility', 'cool'],
-                'instruction': {'load': 'google', 'then': {'find': 'stuff'}}
-            }]
-        })
-        u.validate()
-        self.assertEqual('talos', u.name)
-        self.assertEqual(False, u.deleted)
-        self.assertEqual(
-            [InstructionDocument(name='grab some stuff',
-                                 tags=['utility', 'cool'],
-                                 instruction={'load': 'google', 'then': {'find': 'stuff'}})],
-            u.instructions)
+ #    def test_append_instructions(self):
+ #        """Fiddle with instructions.
+ #        """
+ #        u = User(name="user")
+ #        u.instructions.append(InstructionDocument(**{"name":"foo","instruction":{'load':'google'}}))
+ #        u.instructions.append(InstructionDocument(**{"name":"bar","instruction":{'load':'google'}}))
+ #        u.validate()
+ #        self.assertEquals(2, len(u.instructions))
+
+ #    def test_invalid_same_name_instructions(self):
+ #        """Can't have two instructions with same name.
+ #        """
+ #        u = User(name="roger")
+ #        u.instructions.append(InstructionDocument(name="name",instruction={'load':'google'}))
+ #        u.instructions.append(InstructionDocument(name="name",instruction={'load':'google'}))
+ #        with self.assertRaises(ShieldException):
+ #            u.validate()
+
+ #    def test_deserialize(self):
+ #        """Deserialize a complex user.
+ #        """
+ #        u = User(**{
+ #            'name': 'talos',
+ #            'deleted': False,
+ #            'instructions': [{
+ #                'name': 'grab some stuff',
+ #                'tags': ['utility', 'cool'],
+ #                'instruction': {'load': 'google', 'then': {'find': 'stuff'}}
+ #            }]
+ #        })
+ #        u.validate()
+ #        self.assertEqual('talos', u.name)
+ #        self.assertEqual(False, u.deleted)
+ #        self.assertEqual(
+ #            [InstructionDocument(name='grab some stuff',
+ #                                 tags=['utility', 'cool'],
+ #                                 instruction={'load': 'google', 'then': {'find': 'stuff'}})],
+ #            u.instructions)
 
 class TestInstructionDocument(unittest.TestCase):
+
+    def setUp(self):
+        self.cid = bson.objectid.ObjectId()
 
     def test_requires_name(self):
         """
         Needs a name.
         """
-        doc = InstructionDocument(instruction={"load": "google.com"})
+        doc = InstructionDocument(creator_id=self.cid,
+                                  instruction={"load": "google.com"})
         with self.assertRaises(ShieldException):
             doc.validate()
 
@@ -62,7 +85,17 @@ class TestInstructionDocument(unittest.TestCase):
         """
         Needs an instruction.
         """
-        doc = InstructionDocument(name='name')
+        doc = InstructionDocument(creator_id=self.cid,
+                                  name='name')
+        with self.assertRaises(ShieldException):
+            doc.validate()
+
+    def test_requires_creator_id(self):
+        """
+        Needs a creator.
+        """
+        doc = InstructionDocument(instruction={"load": "google.com"},
+                                  name='name')
         with self.assertRaises(ShieldException):
             doc.validate()
 
@@ -70,7 +103,8 @@ class TestInstructionDocument(unittest.TestCase):
         """
         Should not validate without valid instruction.
         """
-        doc = InstructionDocument(name='name',instruction={"foo":"bar"})
+        doc = InstructionDocument(creator_id=self.cid,name='name',
+                                  instruction={"foo":"bar"})
         with self.assertRaises(ShieldException):
             doc.validate()
 
@@ -78,7 +112,8 @@ class TestInstructionDocument(unittest.TestCase):
         """
         Should validate if there is a valid instruction and name.
         """
-        doc = InstructionDocument(name='name',instruction={"load":"google.com"})
+        doc = InstructionDocument(creator_id=self.cid,
+                                  name='name',instruction={"load":"google.com"})
         doc.validate()
 
 class TestInstructionField(unittest.TestCase):

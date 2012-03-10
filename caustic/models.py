@@ -2,10 +2,10 @@ import validictory
 
 import schema
 
-from dictshield.document import Document, EmbeddedDocument
+from dictshield.document import Document
 from dictshield.base import ShieldException
 from dictshield.fields import StringField, BooleanField, DictField
-from dictshield.fields.compound import ListField, EmbeddedDocumentField
+from dictshield.fields.compound import ListField
 from dictshield.fields.mongo import ObjectIdField
 
 class InstructionField(DictField):
@@ -37,24 +37,22 @@ class InstructionField(DictField):
             raise ShieldException("Invalid Instruction: %s" % errors,
                                   'instruction', value)
 
-
-class InstructionDocument(EmbeddedDocument):
+class InstructionDocument(Document):
     """
-    An Instruction Document has not just the instruction, but also a name and
-    tags.
+    An Instruction Document has not just the instruction, but also a name, tags,
+    and a creator ID.
     """
+    creator_id = ObjectIdField(required=True)
     name = StringField(required=True)
     tags = ListField(StringField())
     instruction = InstructionField(required=True)
 
 class User(Document):
     """
-    A user who can clone, make push requests, and pull
-    instructions.
+    A user who can clone, make push requests, and pull instructions.
     """
     id = ObjectIdField(id_field=True)
     name = StringField(required=True)
     deleted = BooleanField(default=False)
-    instructions = ListField(EmbeddedDocumentField(InstructionDocument))
 
     _private_fields = [deleted]
