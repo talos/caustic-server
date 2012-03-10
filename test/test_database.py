@@ -4,53 +4,54 @@ Test the database.  Mongod must be running.
 
 import pymongo
 import unittest
-from caustic.models import User
+import bson
+from caustic.models import User, InstructionDocument
 
 LOAD_GOOGLE = '{"load":"http://www.google.com/"}'
 
-class TestDatabase(unittest.TestCase):
-
-    @classmethod
-    def setUpClass(cls):
-        """Set up mongod connection.
-        """
-        cls.db = pymongo.Connection().test_caustic
+class TestCollection(unittest.TestCase):
 
     def setUp(self):
-        """Provide access to collections in test_caustic database, and easy
-        user/instruction fixtures.
+        """Provide access to collection in test_caustic database
         """
-        self.users = TestDatabase.db.users
+        self.db = pymongo.Connection().test_caustic
+        self.collection = self.db.collection
 
     def tearDown(self):
         """Drop collections.
         """
-        self.users.drop()
+        self.collection.drop()
 
+
+class TestUsers(TestCollection):
     def test_save_user_assigns_id(self):
         """Saving a user should assign an id.
         """
-        self.assertIsNotNone(self.users.save(User(name="john").to_python()))
+        self.assertIsNotNone(self.collection.save(User(name="john").to_python()))
 
     def test_get_user_by_id(self):
         """Get a user by the assigned id.
         """
-        id = self.users.save(User(name="fred").to_python())
-        u = User(**self.users.find_one(id))
+        id = self.collection.save(User(name="fred").to_python())
+        u = User(**self.collection.find_one(id))
         self.assertEqual("fred", u.name)
 
     def test_get_user_by_name(self):
         """Get a user by name
         """
-        self.users.save(User(name="sally").to_python())
-        self.assertIsNotNone(self.users.find_one({'name': 'sally'}))
+        self.collection.save(User(name="sally").to_python())
+        self.assertIsNotNone(self.collection.find_one({'name': 'sally'}))
+
+
+class TestInstructions(TestCollection):
 
     def test_find_instruction_by_name(self):
         """Saving an instruction.
         """
-        bobbie = User(name="bobbie", instructions=[{'name': 'google', 'instruction': LOAD_GOOGLE}])
-        self.users.save(bobbie.to_python())
-        cursor = self.users.find({'name':'bobbie', 'instructions.name': 'google'})
+        cid = bson.objectid.ObjectId()
+        self.collection.save(InstructionDocument(creator_id=cid, name='google',
+                                                 instruction=LOAD_GOOGLE).to_python())
+        cursor = self.collection.find({'creator_id':cid, 'name': 'google'})
         self.assertEqual(1, cursor.count())
         self.assertDictContainsSubset({'name':'google',
                                        'instruction': LOAD_GOOGLE}, cursor[0])

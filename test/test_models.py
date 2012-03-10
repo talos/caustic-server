@@ -28,45 +28,6 @@ class TestUser(unittest.TestCase):
         u = User(name="exists")
         self.assertFalse(u.deleted)
 
- #    def test_append_instructions(self):
- #        """Fiddle with instructions.
- #        """
- #        u = User(name="user")
- #        u.instructions.append(InstructionDocument(**{"name":"foo","instruction":{'load':'google'}}))
- #        u.instructions.append(InstructionDocument(**{"name":"bar","instruction":{'load':'google'}}))
- #        u.validate()
- #        self.assertEquals(2, len(u.instructions))
-
- #    def test_invalid_same_name_instructions(self):
- #        """Can't have two instructions with same name.
- #        """
- #        u = User(name="roger")
- #        u.instructions.append(InstructionDocument(name="name",instruction={'load':'google'}))
- #        u.instructions.append(InstructionDocument(name="name",instruction={'load':'google'}))
- #        with self.assertRaises(ShieldException):
- #            u.validate()
-
- #    def test_deserialize(self):
- #        """Deserialize a complex user.
- #        """
- #        u = User(**{
- #            'name': 'talos',
- #            'deleted': False,
- #            'instructions': [{
- #                'name': 'grab some stuff',
- #                'tags': ['utility', 'cool'],
- #                'instruction': {'load': 'google', 'then': {'find': 'stuff'}}
- #            }]
- #        })
- #        u.validate()
- #        self.assertEqual('talos', u.name)
- #        self.assertEqual(False, u.deleted)
- #        self.assertEqual(
- #            [InstructionDocument(name='grab some stuff',
- #                                 tags=['utility', 'cool'],
- #                                 instruction={'load': 'google', 'then': {'find': 'stuff'}})],
- #            u.instructions)
-
 class TestInstructionDocument(unittest.TestCase):
 
     def setUp(self):
