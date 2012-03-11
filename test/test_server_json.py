@@ -2,7 +2,7 @@ import unittest
 import requests
 import json
 
-HOST = "http://localhost:6767"
+HOST = "http://localhost:7100"
 LOAD_GOOGLE = '{"load":"http://www.google.com/"}' # valid scraping instruction
 
 class TestServerJSON(unittest.TestCase):

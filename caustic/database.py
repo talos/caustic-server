@@ -7,7 +7,7 @@ caustic.database
 import pymongo
 from pymongo.errors import DuplicateKeyError
 from jsongit import signature
-from caustic.models import User, InstructionDocument
+from models import User, InstructionDocument
 from dictshield.base import ShieldException
 
 def get_db(server, port, name):

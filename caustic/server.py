@@ -73,18 +73,18 @@ class IndexHandler(Handler):
                 context['error'] = 'You are already signed up.'
                 status = 400
             else:
-                user = self.get_argument('user')
+                user_name = self.get_argument('user')
 
-                if not user:
+                if not user_name:
                     context['error'] = 'You must specify user name to sign up'
                     status = 400
-                elif self.application.users.find(user):
-                    context['error'] = "User name '%s' is already in use." % user
+                elif self.application.users.find(user_name):
+                    context['error'] = "User name '%s' is already in use." % user_name
                     status = 400
                 else:
-                    self.save_user(user)
+                    user = self.application.users.create(user_name)
                     self.set_current_user(user)
-                    context['user'] = user
+                    context['user'] = user.name
                     status = 200
         elif action == 'login':
             logging.warn('Login not yet implemented.')
@@ -118,6 +118,12 @@ class IndexHandler(Handler):
 
 class UserHandler(Handler):
 
+    def get(self, user):
+        """
+        Get the user's homepage.
+        """
+        return self.render_template('user', user=user)
+
     def delete(self, user):
         """
         This handler lets a user delete his/her account.  This does not delete
@@ -146,13 +152,6 @@ class UserHandler(Handler):
             return self.render()
         else:
             return self.render_template('user', _status_code=status, **context)
-
-    def get(self, user):
-        """
-        Get the user's homepage.
-        """
-        return self.render_template('user', user=user)
-
 
 class InstructionCollectionHandler(Handler):
     """
@@ -186,7 +185,7 @@ class InstructionCollectionHandler(Handler):
         Allow for cloning and creation.
         """
         context = {}
-        user = self.application.users.find_user(user_name)
+        user = self.application.users.find(user_name)
         if user != self.current_user:
             context['error'] = 'You cannot modify these resources.'
             status = 403
@@ -263,7 +262,7 @@ class InstructionModelHandler(Handler):
         Display a single instruction.
         """
         context = {}
-        user = self.application.users.find_user(user_name)
+        user = self.application.users.find(user_name)
         if user and name in user.instructions:
             context['instruction'] = user.instruction[name].to_python()
             status = 200
@@ -293,12 +292,12 @@ class InstructionModelHandler(Handler):
         else:
             try:
                 instruction = json.loads(self.get_argument('instruction'))
-                doc = self.application.instructions.find(owner.name, name)
+                doc = self.application.instructions.find(user.name, name)
                 if doc:
                     doc.instruction = instruction
                     self.application.instructions.update(doc)
                 else:
-                    doc = self.application.instructions.create(owner, name, instruction)
+                    doc = self.application.instructions.create(user, name, instruction)
                 status = 201
                 context['instruction'] = instruction
             except ShieldException as error:
