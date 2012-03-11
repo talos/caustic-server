@@ -169,3 +169,4 @@ class TestInstructions(unittest.TestCase):
         self.assertFalse(self.instructions.delete(doomed))
         dup = self.instructions.create(self.creator, 'doomed', INSTRUCTION)
         self.assertIsNotNone(dup)
+

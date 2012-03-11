@@ -9,25 +9,20 @@ Store caustic JSON templates in little repos and let users shoot 'em round.
 import json
 import logging
 import uuid
+from jsongit import JsonGitRepository
 from dictshield.base import ShieldException
 from brubeck.request_handling import Brubeck
 from brubeck.auth import UserHandlingMixin
 
-from templating import MustacheRendering
-from config     import config
-from gitdict    import DictRepository, DictAuthor
-from models     import User
+from brubeck.templating import MustacheRendering, load_mustache_env
+from config     import DB_NAME, DB_HOST, DB_PORT, COOKIE_SECRET, RECV_SPEC, \
+                       SEND_SPEC, JSON_GIT_DIR, TEMPLATE_DIR
+from database   import Users, Instructions, get_db
 
 class Handler(MustacheRendering, UserHandlingMixin):
     """
     An extended handler.
     """
-    def _get_user(self, name):
-        """
-        Get the User document for a given name, or None if there is none.
-        """
-        user = self.db_conn.users.find_one({'name': name, 'deleted': False})
-        return User(**user) if user else None
 
     def get_current_user(self):
         """
@@ -35,7 +30,7 @@ class Handler(MustacheRendering, UserHandlingMixin):
         cookie session.  Returns `None` if there is no current user.
         """
         id = self.get_cookie('session', None, self.application.cookie_secret)
-        return User(**self.db_conn.users.find_one(id=id))
+        return self.application.users.get(id)
 
     def set_current_user(self, user):
         """
@@ -54,9 +49,6 @@ class Handler(MustacheRendering, UserHandlingMixin):
         """
         Returns True if this was a request for JSON, False otherwise.
         """
-        # print 'IS JSON REQUEST:'
-        # print self.message.headers
-        # print 'IS JSON REQUEST:'
         return self.message.headers.get('accept').rfind('application/json') > -1
 
 #
@@ -86,7 +78,7 @@ class IndexHandler(Handler):
                 if not user:
                     context['error'] = 'You must specify user name to sign up'
                     status = 400
-                elif self.get_user(user):
+                elif self.application.users.find(user):
                     context['error'] = "User name '%s' is already in use." % user
                     status = 400
                 else:
@@ -101,9 +93,9 @@ class IndexHandler(Handler):
                 context['error'] = 'You are already logged in as %s' % self.current_user.name
                 status = 403
 
-            user = self.db_conn.users.find_one({'name': self.get_argument('user')})
+            user = self.application.users.find(self.get_argument('user'))
             if user:
-                self.set_current_user(User(**user))
+                self.set_current_user(user)
                 status = 200
             else:
                 context['error'] = 'User does not exist'
@@ -141,8 +133,7 @@ class UserHandler(Handler):
 
             if token == self.get_cookie('token', None, self.application.cookie_secret):
                 self.delete_cookie('token')
-                user.deleted = True
-                self.db_conn.users.save(user.to_python())
+                self.application.users.delete(user)
                 status = 204
             else:
                 self.set_cookie('token', token, self.application.cookie_secret)
@@ -173,13 +164,13 @@ class InstructionCollectionHandler(Handler):
         Provide a listing of all this user's instructions.
         """
         context = { 'user': user_name }
-        user = self._get_user(user_name)
-        if user:
-            context['instructions'] = user.instructions
-            status = 200
-        else:
+        instructions = self.application.instructions.for_creator(user_name)
+        if instructions == None:
             context['error'] = "User %s does not exist." % user_name
             status = 404
+        else:
+            context['instructions'] = instructions
+            status = 200
 
         if self.is_json_request():
             self.set_body(json.dumps(context))
@@ -195,7 +186,7 @@ class InstructionCollectionHandler(Handler):
         Allow for cloning and creation.
         """
         context = {}
-        user = self._get_user(user_name)
+        user = self.application.users.find_user(user_name)
         if user != self.current_user:
             context['error'] = 'You cannot modify these resources.'
             status = 403
@@ -203,31 +194,31 @@ class InstructionCollectionHandler(Handler):
             action = self.get_argument('action')
             if action == 'create':
                 name = self.get_argument('name')
-                if name in user.instructions:
+                if self.application.instructions.find(user_name, name):
                     status = 409
                     context['error'] = "There is already an instruction with that name"
                 else:
-                    status = 303
-                    self.headers['Location'] = name
-            elif action == 'clone':
-                owner = self._get_user(self.get_argument('owner'))
-                name = self.get_argument('name')
+                    status = 302
+                    self.headers['Location'] = name  # they will be able to create it there
+            # elif action == 'clone':
+            #     owner = self.application.users.find(self.get_argument('owner'))
+            #     name = self.get_argument('name')
 
-                if not owner:
-                    status = 404
-                    context['error'] = "There is no user %s" % owner
-                elif name in user.instructions:
-                    status = 409
-                    context['error'] = "You already have an instruction with that name"
-                elif name in owner.instructions:
-                    user.instructions[name] = owner.instructions[name]
-                    self.db_conn.users.save(user.to_python())
-                    self.repo.create('/'.join(user, name), user.instructions[name])
-                    status = 303 # forward to page for instruction
-                    self.headers['Location'] = name
-                else:
-                    status = 409
-                    context['error'] = "Could not clone the instruction."
+            #     if not owner:
+            #         status = 404
+            #         context['error'] = "There is no user %s" % owner
+            #     elif name in user.instructions:
+            #         status = 409
+            #         context['error'] = "You already have an instruction with that name"
+            #     elif name in owner.instructions:
+            #         user.instructions[name] = owner.instructions[name]
+            #         self.db_conn.users.save(user.to_python())
+            #         self.repo.create('/'.join(user, name), user.instructions[name])
+            #         status = 303 # forward to page for instruction
+            #         self.headers['Location'] = name
+            #     else:
+            #         status = 409
+            #         context['error'] = "Could not clone the instruction."
             else:
                 context['error'] = 'Unknown action'
                 status = 400
@@ -245,14 +236,14 @@ class TagCollectionHandler(Handler):
     tag.
     """
     def get(self, user_name, tag):
-        user = self._get_user(user_name)
         context = {'tag': tag, 'user': user_name}
-        if user:
-            status = 200
-            context['instructions'] = self.find_instructions(user, tag=tag)
-        else:
+        instructions = self.application.instructions.tagged(user_name, tag)
+        if instructions == None:
             status = 404
             context['error'] = "No user %s" % user_name
+        else:
+            status = 200
+            context['instructions'] = instructions
 
         if self.is_json_request():
             self.set_body(json.dumps(context['instructions'] if 'instructions' in context else context))
@@ -272,7 +263,7 @@ class InstructionModelHandler(Handler):
         Display a single instruction.
         """
         context = {}
-        user = self._get_user(user_name)
+        user = self.application.users.find_user(user_name)
         if user and name in user.instructions:
             context['instruction'] = user.instruction[name].to_python()
             status = 200
@@ -302,16 +293,12 @@ class InstructionModelHandler(Handler):
         else:
             try:
                 instruction = json.loads(self.get_argument('instruction'))
-
-                repo = self.application.repo
-                key = '/'.join([owner, name])
-                if repo.has(key):
-                    git_dict = repo.get(key)
-                    git_dict.clear()
-                    git_dict.update(instruction)
-                    git_dict.commit(author=DictAuthor(str(user.id), str(user.id)).signature())
+                doc = self.application.instructions.find(owner.name, name)
+                if doc:
+                    doc.instruction = instruction
+                    self.application.instructions.update(doc)
                 else:
-                    repo.create(key, instruction)
+                    doc = self.application.instructions.create(owner, name, instruction)
                 status = 201
                 context['instruction'] = instruction
             except ShieldException as error:
@@ -320,7 +307,6 @@ class InstructionModelHandler(Handler):
             except ValueError as error:
                 context['error'] = 'Invalid JSON: %s.' % error
                 status = 400
-            context['instruction'] = instruction
 
         if self.is_json_request():
             self.set_body(json.dumps(context))
@@ -341,9 +327,9 @@ class InstructionModelHandler(Handler):
             context['error'] = "You cannot delete someone else's template"
             status = 403
         else:
-            if name in user.instructions:
-                user.instructions.pop(name)
-                self.db_conn.users.save(user.to_python())
+            instruction = self.application.instructions.find(user, name)
+            if instruction:
+                self.application.instructions.delete(instruction)
                 status = 200
             else:
                 status['error'] = "Instruction does not exist"
@@ -357,13 +343,20 @@ class InstructionModelHandler(Handler):
             return self.render_template('delete_instruction', _status_code=status, **context)
 
 
-config['handler_tuples'] = [
-    (r'^/?$', IndexHandler),
-    (r'^/([\w\-]})/?$', UserHandler),
-    (r'^/([\w\-]+)/instructions/?$', InstructionCollectionHandler),
-    (r'^/([\w\-]+)/instructions/([\w\-]+)/?$', InstructionModelHandler),
-    (r'^/([\w\-]+)/tagged/([\w\-]+)/?$', TagCollectionHandler)]
+config = {
+    'mongrel2_pair': (RECV_SPEC, SEND_SPEC),
+    'handler_tuples': [
+        (r'^/?$', IndexHandler),
+        (r'^/([\w\-]})/?$', UserHandler),
+        (r'^/([\w\-]+)/instructions/?$', InstructionCollectionHandler),
+        (r'^/([\w\-]+)/instructions/([\w\-]+)/?$', InstructionModelHandler),
+        (r'^/([\w\-]+)/tagged/([\w\-]+)/?$', TagCollectionHandler)],
+    'template_loader': load_mustache_env(TEMPLATE_DIR),
+    'cookie_secret': COOKIE_SECRET,
+}
 
 app = Brubeck(**config)
-app.repo = DictRepository(config['git_dir'])
+db = get_db(DB_HOST, DB_PORT, DB_NAME)
+app.users = Users(db)
+app.instructions = Instructions(app.users, JsonGitRepository(JSON_GIT_DIR), db)
 app.run()
