@@ -2,9 +2,15 @@ import unittest
 import requests
 import json
 
+from caustic.database import get_db
+
 HOST = "http://localhost:7100"
 LOAD_GOOGLE = '{"load":"http://www.google.com/"}' # valid scraping instruction
 TAGS = '["fun", "interesting", "enlightening"]'
+VALID_INSTRUCTION = {
+    'instruction': LOAD_GOOGLE,
+    'tags': TAGS
+}
 
 class TestServerJSON(unittest.TestCase):
     """
@@ -15,28 +21,46 @@ class TestServerJSON(unittest.TestCase):
         """
         Sign up `user`, while keeping track of the signup for later cleanup.
         """
-        self.created_accounts.append(user)
-        return self.s.post("%s" % HOST, data={
+        r = self.s.post("%s" % HOST, data={
             'action': 'signup',
             'user'  : user
         })
+        #self.assertEqual(200, r.status_code, r.content)
+        if r.status_code == 200:
+            self.created_accounts.append(user)
+        return r
 
     def _login(self, user):
         """
         Login `user`.
         """
-        return self.s.post("%s" % HOST, data={
+        r = self.s.post("%s" % HOST, data={
             'action': 'login',
             'user'  : user
         })
+        self.assertEqual(200, r.status_code, r.content)
+        return r
 
     def _logout(self):
         """
         Log out.
         """
-        return self.s.post("%s" % HOST, data={
+        r = self.s.post("%s" % HOST, data={
             'action': 'logout'
         })
+        self.assertEqual(200, r.status_code, r.content)
+        return r
+
+    def _destroy(self, user):
+        """
+        Destroy `user`.  Should already be logged in.
+        """
+        r = self.s.delete("%s/%s" % (HOST, user))
+        self.assertEqual(200, r.status_code, r.content)
+        self.assertIn('destroyed', json.loads(r.content), r.content)
+        if user in self.created_accounts:
+            self.created_accounts.remove(user)
+        return r
 
     def assertJsonEqual(self, str1, str2):
         """
@@ -44,13 +68,23 @@ class TestServerJSON(unittest.TestCase):
         """
         self.assertEqual(json.loads(str1), json.loads(str2))
 
+    @classmethod
+    def setUpClass(cls):
+        """
+        Make sure db is clean before starting up.
+        """
+        db = get_db('localhost', 27017, 'caustic_test') # todo read from config
+        db.connection.drop_database(db)
+
     def setUp(self):
         """
         Keep track of created accounts and session, make sure requests are for
         JSON.
         """
         self.created_accounts = []
-        self.s = requests.session(headers={"accept":"application/json text/javascript"})
+        self.s = requests.session(headers={
+            "accept": "application/json text/javascript"
+        })
 
     def tearDown(self):
         """
@@ -59,26 +93,27 @@ class TestServerJSON(unittest.TestCase):
         for user in self.created_accounts:
             self._logout()
             self._login(user)
-            r = self.s.delete("%s/%s" % (HOST, user))
-            self.assertEqual(200, r.status_code)
-            token = json.loads(r.content)['token']
-            self.s.delete("%s/%s" % (HOST, user), data={'token': token})
+            self._destroy(user)
+
 
     def test_valid_user_names(self):
         """
         Names with dashes are allowed.
         """
         for valid in ['dashy-mcdash', 'simple']:
-            self.assertEqual(200, self._signup(valid))
-            self.assertTrue('session' in self.s.cookies)
+            r = self._signup(valid)
+            self.assertEqual(200, r.status_code, r.content)
+            self.assertIn('session', self.s.cookies, r.content)
+            self._logout()
 
     def test_invalid_user_names(self):
         """
         Names with non-alphanumerics or non-dashes are not allowed
         """
-        for valid in ['space mcspace', '*&(*EYF', 'slash/mcslash/']:
-            self.assertEqual(400, self._signup(valid))
-            self.assertFalse('session' in self.s.cookies)
+        for invalid in ['space mcspace', '*&(*EYF', 'slash/mcslash/']:
+            r = self._signup(invalid)
+            self.assertEqual(400, r.status_code, r.content)
+            self.assertNotIn('session', self.s.cookies, r.content)
 
     def test_login(self):
         """
@@ -87,7 +122,7 @@ class TestServerJSON(unittest.TestCase):
         self._signup('mies')
         self._logout()
         self._login('mies')
-        self.assertTrue('session' in self.s.cookies)
+        self.assertIn('session', self.s.cookies)
 
     def test_logout(self):
         """
@@ -95,23 +130,34 @@ class TestServerJSON(unittest.TestCase):
         """
         self._signup('vitruvius')
         self._logout()
-        self.assertFalse('session' in self.s.cookies)
+        self.assertIn('session', self.s.cookies)
+
+    def test_signup(self):
+        """
+        Test creating an account.
+        """
+        r = self._signup('wootage')
+        self.assertEquals(200, r.status_code, r.content)
+        self.assertTrue('session' in self.s.cookies)
+        r = self.s.get("%s/%s" % (HOST, 'wootage'))
+        self.assertEquals(200, r.status_code, r.content)
+
+    def test_destroy(self):
+        """
+        Test destroying an account.
+        """
+        self._signup('doomed')
+        r = self._destroy('doomed')
+        self.assertEquals(200, r.status_code, r.content)
+        r = self.s.get("%s/%s" % (HOST, 'doomed'))
+        self.assertEquals(404, r.status_code, r.content)
 
     def test_nonexistent(self):
         """
         Test getting a 404.
         """
         r = self.s.get("%s/lksdjflksdjg" % HOST)
-        self.assertEqual(404, r.status_code)
-
-    def test_post_valid_instruction(self):
-        self._signup('fuller')
-        r = self.s.post("%s/fuller/instructions/" % HOST, data={
-            'name': 'manhattan-bubble',
-            'instruction': LOAD_GOOGLE
-        })
-        self.assertEqual(303, r.status_code)
-        self.assertEqual('manhattan-bubble', r.headers['Location'])
+        self.assertEqual(404, r.status_code, r.content)
 
     def test_put_valid_instruction(self):
         """
@@ -122,7 +168,7 @@ class TestServerJSON(unittest.TestCase):
             'instruction': LOAD_GOOGLE,
             'tags': TAGS
         })
-        self.assertEqual(201, r.status_code)
+        self.assertEqual(201, r.status_code, r.content)
 
     def test_put_invalid_instruction(self):
         """
@@ -133,7 +179,7 @@ class TestServerJSON(unittest.TestCase):
             'instruction': json.dumps({ 'foo':'bar' }),
             'tags': TAGS
         })
-        self.assertEqual(400, r.status_code)
+        self.assertEqual(400, r.status_code, r.content)
 
     def test_put_missing_argument(self):
         """
@@ -143,11 +189,11 @@ class TestServerJSON(unittest.TestCase):
         r = self.s.put("%s/chiang/instructions/missing_tags" % HOST, data={
             'instruction': LOAD_GOOGLE
         })
-        self.assertEqual(400, r.status_code)
+        self.assertEqual(400, r.status_code, r.content)
         r = self.s.put("%s/chiang/instructions/missing_instruction" % HOST, data={
             'tags': TAGS
         })
-        self.assertEqual(400, r.status_code)
+        self.assertEqual(400, r.status_code, r.content)
 
     def test_not_logged_in_no_create(self):
         """
@@ -160,20 +206,18 @@ class TestServerJSON(unittest.TestCase):
             'instruction': LOAD_GOOGLE,
             'tags': TAGS
         })
-        self.assertEqual(401, r.status_code)
+        self.assertEqual(403, r.status_code, r.content)
 
     def test_get_instruction_logged_in(self):
         """
         Get an instruction on the server using HTTP GET while logged in.
         """
         self._signup('jacobs')
-        self.s.put("%s/jacobs/instructions/life-n-death" % HOST, data={
-            'instruction': LOAD_GOOGLE,
-            'tags': TAGS
-        })
+        self.s.put("%s/jacobs/instructions/life-n-death" % HOST,
+                   data=VALID_INSTRUCTION)
 
         r = self.s.get("%s/jacobs/instructions/life-n-death" % HOST)
-        self.assertEqual(200, r.status_code)
+        self.assertEqual(200, r.status_code, r.content)
         self.assertJsonEqual(LOAD_GOOGLE, r.content)
 
     def test_get_instruction_not_logged_in(self):
@@ -181,14 +225,12 @@ class TestServerJSON(unittest.TestCase):
         Get a instruction on the server using HTTP GET while not logged in.
         """
         self._signup('jacobs')
-        self.s.put("%s/jacobs/instructions/life-n-death" % HOST, data={
-            'instruction': LOAD_GOOGLE,
-            'tags': TAGS
-        })
+        self.s.put("%s/jacobs/instructions/life-n-death" % HOST,
+                   data=VALID_INSTRUCTION)
         self._logout()
 
         r = self.s.get("%s/jacobs/instructions/life-n-death" % HOST)
-        self.assertEqual(200, r.status_code)
+        self.assertEqual(200, r.status_code, r.content)
         self.assertJsonEqual(LOAD_GOOGLE, r.content)
 
     def test_update_instruction_json(self):
@@ -196,22 +238,33 @@ class TestServerJSON(unittest.TestCase):
         Update an instruction by replacing it with PUT.
         """
         self._signup('moses')
-        self.s.put("%s/moses/instructions/bqe" % HOST, data={
-            'instruction': LOAD_GOOGLE,
-            'tags': TAGS
-        })
+        self.s.put("%s/moses/instructions/bqe" % HOST, data=VALID_INSTRUCTION)
 
-        load_nytimes = json.dumps({"load":"http://www.nytimes.com/"}) 
+        load_nytimes = json.dumps({"load":"http://www.nytimes.com/"})
         self.s.put("%s/moses/instructions/bqe" % HOST, data={
             'instruction': load_nytimes,
             'tags': TAGS
         })
 
         r = self.s.get("%s/moses/instructions/bqe" % HOST)
-        self.assertEqual(200, r.status_code)
+        self.assertEqual(200, r.status_code, r.content)
         self.assertJsonEqual(load_nytimes, r.content)
 
-    def xtest_get_instructions_by_tag(self):
+    def test_user_instructions(self):
+        """
+        Get all the instructions by a particular user.
+        """
+        self._signup('joe')
+        self.s.put("%s/joe/instructions/foo" % HOST, data=VALID_INSTRUCTION)
+        self.s.put("%s/joe/instructions/bar" % HOST, data=VALID_INSTRUCTION)
+
+        r = self.s.get("%s/joe/instructions/" % HOST)
+        self.assertEqual(200, r.status_code, r.content)
+        self.assertItemsEqual(['/joe/instructions/foo',
+                               '/joe/instructions/bar'],
+                              json.loads(r.content))
+
+    def test_get_instructions_by_tag(self):
         """
         Get several instructions with one tag.  Returns an array of
         links to the instructions.
@@ -227,10 +280,10 @@ class TestServerJSON(unittest.TestCase):
         })
 
         r = self.s.get("%s/trog-dor/tagged/burnination" % HOST)
-        self.assertEqual(200, r.status_code)
-        self.assertEqual(["/trog-dor/instructions/burning",
-                          "/trog-dor/instructions/pillaging"],
-                         json.loads(r.content))
+        self.assertEqual(200, r.status_code, r.content)
+        self.assertItemsEqual(["/trog-dor/instructions/burning",
+                               "/trog-dor/instructions/pillaging"],
+                              json.loads(r.content))
 
     def test_get_nonexistent_tag(self):
         """
@@ -240,22 +293,26 @@ class TestServerJSON(unittest.TestCase):
         self._logout()
 
         r = self.s.get("%s/vicious/tagged/erudite" % HOST)
-        self.assertEqual(200, r.status_code)
+        self.assertEqual(200, r.status_code, r.content)
         self.assertEqual([], json.loads(r.content))
 
-    def xtest_delete_tag(self):
+    def test_delete_tag(self):
         """
         Delete a tag.
         """
         self._signup('fashionista')
         self.s.put("%s/fashionista/instructions/ray-bans" % HOST, data={
-            'instruction': LOAD_GOOGLE
+            'instruction': LOAD_GOOGLE,
+            'tags' : '["trendy"]'
         })
-        self.s.put("%s/fashionista/instructions/ray-bans/tags/trendy" % HOST)
-        self.s.delete("%s/fashionista/instructions/ray-bans/tags/trendy" % HOST)
+        self.s.put("%s/fashionista/instructions/ray-bans" % HOST, data={
+            'instruction': LOAD_GOOGLE,
+            'tags' : '[]'
+        })
 
         r = self.s.get("%s/fashionista/tagged/trendy" % HOST)
-        self.assertEqual([], json.loads(r.content))
+        self.assertEqual(200, r.status_code, r.content)
+        self.assertJsonEqual('[]', r.content)
 
     def xtest_clone_instruction(self):
         """

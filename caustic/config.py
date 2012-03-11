@@ -29,6 +29,7 @@ if not len(PARSER.read('config.ini')):
         PARSER.set(mode, 'json_git_dir', "%s.jsongit" % mode)
         PARSER.set(mode, 'recv_spec', 'ipc://caustic:1')
         PARSER.set(mode, 'send_spec', 'ipc://caustic:0')
+        PARSER.set(mode, 'valid_url_chars', '\w\-')
 
     try:
         conf = open('config.ini', 'w')
@@ -46,3 +47,4 @@ RECV_SPEC = PARSER.get(MODE, 'recv_spec')
 SEND_SPEC = PARSER.get(MODE, 'send_spec')
 JSON_GIT_DIR = PARSER.get(MODE, 'json_git_dir')
 TEMPLATE_DIR = PARSER.get(MODE, 'template_dir')
+VALID_URL_CHARS = PARSER.get(MODE, 'valid_url_chars')

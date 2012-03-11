@@ -119,33 +119,30 @@ class Instructions(object):
     def create(self, creator, name, instruction, tags):
         """Create an instruction for a creator.
 
-        Returns the InstructionDocument if it's created, or None if it
-        is a duplicate or invalid.
-        """
-        try:
-            doc = InstructionDocument(
-                creator_id=creator.id,
-                name=name,
-                instruction=instruction,
-                tags=tags)
-            doc.validate()
-        except ShieldException:
-            return None
+        Returns the InstructionDocument.
 
-        try:
-            id = self.coll.insert(doc.to_python())
-            doc = InstructionDocument(**self.coll.find_one(id))  # grab ID
-            self.repo.create(self._repo_key(creator, doc), doc.instruction,
-                             author=signature(creator.name, creator.name))
-            return doc
-        except DuplicateKeyError:
-            return None
+        Raises a DuplicateKeyError or ShieldException otherwise.
+        """
+        doc = InstructionDocument(
+            creator_id=creator.id,
+            name=name,
+            instruction=instruction,
+            tags=tags)
+        doc.validate()
+
+        id = self.coll.insert(doc.to_python())
+        doc = InstructionDocument(**self.coll.find_one(id))  # grab ID
+        self.repo.create(self._repo_key(creator, doc), doc.instruction,
+                         author=signature(creator.name, creator.name))
+        return doc
 
     def save_or_create(self, creator, name, instruction, tags):
         """Save over the named instruction with new data if it exists,
         or create it otherwise.
 
         Returns the InstructionDocument.
+
+        Raises a ShieldException if there's a problem.
         """
         doc = self.find(creator.name, name)
         if doc:

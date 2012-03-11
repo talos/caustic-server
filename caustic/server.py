@@ -13,7 +13,7 @@ except ImportError:
     import json
 
 import logging
-import uuid
+import re
 from jsongit import JsonGitRepository
 from dictshield.base import ShieldException
 from brubeck.request_handling import Brubeck
@@ -21,13 +21,25 @@ from brubeck.auth import UserHandlingMixin
 
 from brubeck.templating import MustacheRendering, load_mustache_env
 from config     import DB_NAME, DB_HOST, DB_PORT, COOKIE_SECRET, RECV_SPEC, \
-                       SEND_SPEC, JSON_GIT_DIR, TEMPLATE_DIR
+                       SEND_SPEC, JSON_GIT_DIR, TEMPLATE_DIR, VALID_URL_CHARS
 from database   import Users, Instructions, get_db
 
 class Handler(MustacheRendering, UserHandlingMixin):
     """
     An extended handler.
     """
+
+    def instruction_to_path(self, user_name, instruction_doc):
+        """
+        Convert an instruction to its path.
+        """
+        return "/%s/instructions/%s" % (user_name, instruction_doc.name)
+
+    def instruction_paths(self, user_name, instruction_docs):
+        """
+        Convert a list of instruction documents to a list of their paths.
+        """
+        return [self.instruction_to_path(user_name, doc) for doc in instruction_docs]
 
     def get_current_user(self):
         """
@@ -75,13 +87,16 @@ class IndexHandler(Handler):
         context = {}
         if action == 'signup':
             if self.current_user:
-                context['error'] = 'You are already signed up.'
+                context['error'] = 'You are already logged in as %s.' % self.current_user.name
                 status = 400
             else:
                 user_name = self.get_argument('user')
 
                 if not user_name:
                     context['error'] = 'You must specify user name to sign up'
+                    status = 400
+                elif re.search(r'[^%s]' % VALID_URL_CHARS, user_name):
+                    context['error'] = 'Illegal character in requested user name'
                     status = 400
                 elif self.application.users.find(user_name):
                     context['error'] = "User name '%s' is already in use." % user_name
@@ -123,33 +138,44 @@ class IndexHandler(Handler):
 
 class UserHandler(Handler):
 
-    def get(self, user):
+    def get(self, user_name):
         """
         Get the user's homepage.
         """
+        context = {}
+        user = self.application.users.find(user_name)
+        if user:
+            context['user'] = user.to_json(encode=False)
+            status = 200
+        else:
+            context['error'] = "No user %s" % user_name
+            status = 404
+
+        if self.is_json_request():
+            self.set_body(json.dumps(context))
+            self.set_status(status)
+            return self.render()
+        else:
+            return self.render_template('user', _status_code=status, **context)
+
         return self.render_template('user', user=user)
 
-    def delete(self, user):
+    def delete(self, user_name):
         """
         This handler lets a user delete his/her account.  This does not delete
         instructions, but will orphan them.  S/he must match a deletion token.
         """
-        context = {'user': user}
+        context = {}
         if not self.current_user:
             context['error'] = 'You are not signed in.'
             status = 401
+        elif self.current_user.name == user_name:
+            self.application.users.delete(self.current_user)
+            context['destroyed'] = self.current_user.name
+            status = 200
         else:
-            user = self.current_user
-            token = self.get_argument('token', str(uuid.uuid4()))
-
-            if token == self.get_cookie('token', None, self.application.cookie_secret):
-                self.delete_cookie('token')
-                self.application.users.delete(user)
-                status = 200
-            else:
-                self.set_cookie('token', token, self.application.cookie_secret)
-                context['token'] = token
-                status = 200
+            status = 403
+            context['error'] = "You cannot destroy that user."
 
         if self.is_json_request():
             self.set_body(json.dumps(context))
@@ -173,10 +199,12 @@ class InstructionCollectionHandler(Handler):
             context['error'] = "User %s does not exist." % user_name
             status = 404
         else:
-            context['instructions'] = instructions
+            context['instructions'] = self.instruction_paths(user_name, instructions)
             status = 200
 
         if self.is_json_request():
+            if status == 200:
+                context = context['instructions']
             self.set_body(json.dumps(context))
             self.set_status(status)
             return self.render()
@@ -247,11 +275,11 @@ class TagCollectionHandler(Handler):
             context['error'] = "No user %s" % user_name
         else:
             status = 200
-            context['instructions'] = instructions
+            context['instructions'] = self.instruction_paths(user_name, instructions)
 
         if self.is_json_request():
             if status == 200:
-                context = [doc.instruction for doc in instructions]
+                context = context['instructions']
             self.set_body(json.dumps(context))
             self.set_status(status)
             return self.render()
@@ -269,9 +297,9 @@ class InstructionModelHandler(Handler):
         Display a single instruction.
         """
         context = {}
-        instruction = self.application.instructions.find(user_name, name)
-        if instruction:
-            context['instruction'] = instruction
+        doc = self.application.instructions.find(user_name, name)
+        if doc:
+            context['instruction'] = doc.to_python()
             status = 200
         else:
             context['error'] = "Instruction does not exist"
@@ -279,7 +307,7 @@ class InstructionModelHandler(Handler):
 
         if self.is_json_request():
             if status == 200:
-                context = instruction.instruction
+                context = doc.instruction
             self.set_body(json.dumps(context))
             self.set_status(status)
             return self.render()
@@ -305,7 +333,7 @@ class InstructionModelHandler(Handler):
                     json.loads(self.get_argument('instruction')),
                     json.loads(self.get_argument('tags')))
                 status = 201
-                context['instruction'] = doc
+                context['instruction'] = doc.to_python()
             except ShieldException as error:
                 context['error'] = "Invalid instruction: %s." % error
                 status = 400
@@ -352,15 +380,15 @@ class InstructionModelHandler(Handler):
         else:
             return self.render_template('delete_instruction', _status_code=status, **context)
 
-
+V_C = VALID_URL_CHARS
 config = {
     'mongrel2_pair': (RECV_SPEC, SEND_SPEC),
     'handler_tuples': [
         (r'^/?$', IndexHandler),
-        (r'^/([\w\-]+)/?$', UserHandler),
-        (r'^/([\w\-]+)/instructions/?$', InstructionCollectionHandler),
-        (r'^/([\w\-]+)/instructions/([\w\-]+)/?$', InstructionModelHandler),
-        (r'^/([\w\-]+)/tagged/([\w\-]+)/?$', TagCollectionHandler)],
+        (r'^/([%s]+)/?$' % V_C, UserHandler),
+        (r'^/([%s]+)/instructions/?$' % V_C, InstructionCollectionHandler),
+        (r'^/([%s]+)/instructions/([%s]+)/?$' % (V_C, V_C), InstructionModelHandler),
+        (r'^/([%s]+)/tagged/([%s]+)/?$' % (V_C, V_C), TagCollectionHandler)],
     'template_loader': load_mustache_env(TEMPLATE_DIR),
     'cookie_secret': COOKIE_SECRET,
 }

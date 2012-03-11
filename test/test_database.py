@@ -6,6 +6,8 @@ import unittest
 import shutil
 from caustic.database import get_db, Users, Instructions
 from jsongit import JsonGitRepository
+from dictshield.base import ShieldException
+from pymongo.errors import DuplicateKeyError
 
 db = get_db('localhost', 27017, 'caustic_test')
 REPO_DIR = 'tmp_git'
@@ -94,9 +96,8 @@ class TestInstructions(unittest.TestCase):
         """Duplicate names forbidden if the creator is the same.
         """
         self.instructions.create(self.creator, 'name', INSTRUCTION, TAGS)
-        self.assertIsNone(self.instructions.create(self.creator, 'name',
-                                                   INSTRUCTION,
-                                                   TAGS))
+        with self.assertRaises(DuplicateKeyError):
+            self.instructions.create(self.creator, 'name', INSTRUCTION, TAGS)
 
     def test_find_instruction(self):
         """Find an instruction.
@@ -143,8 +144,8 @@ class TestInstructions(unittest.TestCase):
         """Don't create with bad tags.
         """
         for bad in [7, 'string', {}]:
-            doc = self.instructions.create(self.creator, 'foo', INSTRUCTION, bad)
-            self.assertIsNone(doc)
+            with self.assertRaises(ShieldException):
+                self.instructions.create(self.creator, 'foo', INSTRUCTION, bad)
 
     def test_tagged_instructions(self):
         """ Get instructions by their tag.
