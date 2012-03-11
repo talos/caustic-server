@@ -164,6 +164,16 @@ class TestInstructions(unittest.TestCase):
         self.assertEqual(2, len(whites))
         self.assertItemsEqual(['roses', 'lilacs'], [d.name for d in whites])
 
+    def test_no_user_none_tags(self):
+        """Should return none if no user.
+        """
+        self.assertIsNone(self.instructions.tagged('some dude', 'tag'))
+
+    def test_user_empty_array_tags(self):
+        """Should return empty array if there is a user, but no tags.
+        """
+        self.assertEquals([], self.instructions.tagged(self.creator.name, 'tag'))
+
     def test_delete(self):
         """Deleting eliminates, allows creation of new with same name.
         """

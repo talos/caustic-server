@@ -309,11 +309,16 @@ class InstructionModelHandler(Handler):
             except ShieldException as error:
                 context['error'] = "Invalid instruction: %s." % error
                 status = 400
+            except TypeError as error:
+                context['error'] = 'Invalid arguments: %s.' % error
+                status = 400
             except ValueError as error:
                 context['error'] = 'Invalid JSON: %s.' % error
                 status = 400
 
         if self.is_json_request():
+            if status == 201:
+                context = doc.instruction
             self.set_body(json.dumps(context))
             self.set_status(status)
             return self.render()

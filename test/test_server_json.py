@@ -4,6 +4,7 @@ import json
 
 HOST = "http://localhost:7100"
 LOAD_GOOGLE = '{"load":"http://www.google.com/"}' # valid scraping instruction
+TAGS = '["fun", "interesting", "enlightening"]'
 
 class TestServerJSON(unittest.TestCase):
     """
@@ -15,7 +16,7 @@ class TestServerJSON(unittest.TestCase):
         Sign up `user`, while keeping track of the signup for later cleanup.
         """
         self.created_accounts.append(user)
-        self.s.post("%s" % HOST, data={
+        return self.s.post("%s" % HOST, data={
             'action': 'signup',
             'user'  : user
         })
@@ -24,7 +25,7 @@ class TestServerJSON(unittest.TestCase):
         """
         Login `user`.
         """
-        self.s.post("%s" % HOST, data={
+        return self.s.post("%s" % HOST, data={
             'action': 'login',
             'user'  : user
         })
@@ -33,7 +34,7 @@ class TestServerJSON(unittest.TestCase):
         """
         Log out.
         """
-        self.s.post("%s" % HOST, data={
+        return self.s.post("%s" % HOST, data={
             'action': 'logout'
         })
 
@@ -63,12 +64,21 @@ class TestServerJSON(unittest.TestCase):
             token = json.loads(r.content)['token']
             self.s.delete("%s/%s" % (HOST, user), data={'token': token})
 
-    def test_signup(self):
+    def test_valid_user_names(self):
         """
-        Test signing up.  We should have logged in after signing up.
+        Names with dashes are allowed.
         """
-        self.assertEqual(200, self._signup('corbusier').status_code)
-        self.assertTrue('session' in self.s.cookies)
+        for valid in ['dashy-mcdash', 'simple']:
+            self.assertEqual(200, self._signup(valid))
+            self.assertTrue('session' in self.s.cookies)
+
+    def test_invalid_user_names(self):
+        """
+        Names with non-alphanumerics or non-dashes are not allowed
+        """
+        for valid in ['space mcspace', '*&(*EYF', 'slash/mcslash/']:
+            self.assertEqual(400, self._signup(valid))
+            self.assertFalse('session' in self.s.cookies)
 
     def test_login(self):
         """
@@ -109,17 +119,33 @@ class TestServerJSON(unittest.TestCase):
         """
         self._signup('fuller')
         r = self.s.put("%s/fuller/instructions/manhattan-bubble" % HOST, data={
-            'instruction': LOAD_GOOGLE
+            'instruction': LOAD_GOOGLE,
+            'tags': TAGS
         })
         self.assertEqual(201, r.status_code)
 
-    def test_invalid_instruction(self):
+    def test_put_invalid_instruction(self):
         """
         Ensure the server rejects an invalid instruction.
         """
         self._signup('chiang')
         r = self.s.put("%s/chiang/instructions/politics" % HOST, data={
-            'instruction': json.dumps({ 'foo':'bar' })
+            'instruction': json.dumps({ 'foo':'bar' }),
+            'tags': TAGS
+        })
+        self.assertEqual(400, r.status_code)
+
+    def test_put_missing_argument(self):
+        """
+        Ensure the server rejects an instructio missing an argument.
+        """
+        self._signup('chiang')
+        r = self.s.put("%s/chiang/instructions/missing_tags" % HOST, data={
+            'instruction': LOAD_GOOGLE
+        })
+        self.assertEqual(400, r.status_code)
+        r = self.s.put("%s/chiang/instructions/missing_instruction" % HOST, data={
+            'tags': TAGS
         })
         self.assertEqual(400, r.status_code)
 
@@ -131,7 +157,8 @@ class TestServerJSON(unittest.TestCase):
         self._signup('lennon')
         self._logout()
         r = self.s.put("%s/lennon/instructions/nope" % HOST, data={
-            'instruction': LOAD_GOOGLE
+            'instruction': LOAD_GOOGLE,
+            'tags': TAGS
         })
         self.assertEqual(401, r.status_code)
 
@@ -141,7 +168,8 @@ class TestServerJSON(unittest.TestCase):
         """
         self._signup('jacobs')
         self.s.put("%s/jacobs/instructions/life-n-death" % HOST, data={
-            'instruction': LOAD_GOOGLE
+            'instruction': LOAD_GOOGLE,
+            'tags': TAGS
         })
 
         r = self.s.get("%s/jacobs/instructions/life-n-death" % HOST)
@@ -154,7 +182,8 @@ class TestServerJSON(unittest.TestCase):
         """
         self._signup('jacobs')
         self.s.put("%s/jacobs/instructions/life-n-death" % HOST, data={
-            'instruction': LOAD_GOOGLE
+            'instruction': LOAD_GOOGLE,
+            'tags': TAGS
         })
         self._logout()
 
@@ -168,19 +197,21 @@ class TestServerJSON(unittest.TestCase):
         """
         self._signup('moses')
         self.s.put("%s/moses/instructions/bqe" % HOST, data={
-            'instruction': LOAD_GOOGLE
+            'instruction': LOAD_GOOGLE,
+            'tags': TAGS
         })
 
         load_nytimes = json.dumps({"load":"http://www.nytimes.com/"}) 
         self.s.put("%s/moses/instructions/bqe" % HOST, data={
-            'instruction': load_nytimes
+            'instruction': load_nytimes,
+            'tags': TAGS
         })
 
         r = self.s.get("%s/moses/instructions/bqe" % HOST)
         self.assertEqual(200, r.status_code)
         self.assertJsonEqual(load_nytimes, r.content)
 
-    def test_get_instructions_by_tag(self):
+    def xtest_get_instructions_by_tag(self):
         """
         Get several instructions with one tag.  Returns an array of
         links to the instructions.
