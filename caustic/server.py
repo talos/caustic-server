@@ -6,7 +6,12 @@ Caustic server.
 Store caustic JSON templates in little repos and let users shoot 'em round.
 """
 
-import json
+try:
+    import simplejson as json
+    json
+except ImportError:
+    import json
+
 import logging
 import uuid
 from jsongit import JsonGitRepository
@@ -140,11 +145,11 @@ class UserHandler(Handler):
             if token == self.get_cookie('token', None, self.application.cookie_secret):
                 self.delete_cookie('token')
                 self.application.users.delete(user)
-                status = 204
+                status = 200
             else:
                 self.set_cookie('token', token, self.application.cookie_secret)
                 context['token'] = token
-                status = 204
+                status = 200
 
         if self.is_json_request():
             self.set_body(json.dumps(context))
@@ -245,7 +250,9 @@ class TagCollectionHandler(Handler):
             context['instructions'] = instructions
 
         if self.is_json_request():
-            self.set_body(json.dumps(context['instructions'] if 'instructions' in context else context))
+            if status == 200:
+                context = [doc.instruction for doc in instructions]
+            self.set_body(json.dumps(context))
             self.set_status(status)
             return self.render()
         else:
@@ -262,16 +269,18 @@ class InstructionModelHandler(Handler):
         Display a single instruction.
         """
         context = {}
-        user = self.application.users.find(user_name)
-        if user and name in user.instructions:
-            context['instruction'] = user.instruction[name].to_python()
+        instruction = self.application.instructions.find(user_name, name)
+        if instruction:
+            context['instruction'] = instruction
             status = 200
         else:
             context['error'] = "Instruction does not exist"
             status = 404
 
         if self.is_json_request():
-            self.set_body(context['instruction'] if 'instruction' in context else context)
+            if status == 200:
+                context = instruction.instruction
+            self.set_body(json.dumps(context))
             self.set_status(status)
             return self.render()
         else:
@@ -291,15 +300,12 @@ class InstructionModelHandler(Handler):
             status = 403
         else:
             try:
-                instruction = json.loads(self.get_argument('instruction'))
-                doc = self.application.instructions.find(user.name, name)
-                if doc:
-                    doc.instruction = instruction
-                    self.application.instructions.update(doc)
-                else:
-                    doc = self.application.instructions.create(user, name, instruction)
+                doc = self.application.instructions.save_or_create(
+                    user, name,
+                    json.loads(self.get_argument('instruction')),
+                    json.loads(self.get_argument('tags')))
                 status = 201
-                context['instruction'] = instruction
+                context['instruction'] = doc
             except ShieldException as error:
                 context['error'] = "Invalid instruction: %s." % error
                 status = 400
@@ -346,7 +352,7 @@ config = {
     'mongrel2_pair': (RECV_SPEC, SEND_SPEC),
     'handler_tuples': [
         (r'^/?$', IndexHandler),
-        (r'^/([\w\-]})/?$', UserHandler),
+        (r'^/([\w\-]+)/?$', UserHandler),
         (r'^/([\w\-]+)/instructions/?$', InstructionCollectionHandler),
         (r'^/([\w\-]+)/instructions/([\w\-]+)/?$', InstructionModelHandler),
         (r'^/([\w\-]+)/tagged/([\w\-]+)/?$', TagCollectionHandler)],

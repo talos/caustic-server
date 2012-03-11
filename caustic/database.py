@@ -116,17 +116,18 @@ class Instructions(object):
         else:
             return None
 
-    def create(self, creator, name, instruction):
+    def create(self, creator, name, instruction, tags):
         """Create an instruction for a creator.
 
-        Returns the Instruction if it's created, or None if it
+        Returns the InstructionDocument if it's created, or None if it
         is a duplicate or invalid.
         """
         try:
             doc = InstructionDocument(
                 creator_id=creator.id,
                 name=name,
-                instruction=instruction)
+                instruction=instruction,
+                tags=tags)
             doc.validate()
         except ShieldException:
             return None
@@ -139,6 +140,21 @@ class Instructions(object):
             return doc
         except DuplicateKeyError:
             return None
+
+    def save_or_create(self, creator, name, instruction, tags):
+        """Save over the named instruction with new data if it exists,
+        or create it otherwise.
+
+        Returns the InstructionDocument.
+        """
+        doc = self.find(creator.name, name)
+        if doc:
+            doc.instruction = instruction
+            doc.tags = tags
+            self.save(doc)
+            return doc
+        else:
+            return self.create(creator, name, instruction, tags)
 
     def save(self, doc):
         """Save an instruction.

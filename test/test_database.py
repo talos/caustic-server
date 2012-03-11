@@ -10,6 +10,7 @@ from jsongit import JsonGitRepository
 db = get_db('localhost', 27017, 'caustic_test')
 REPO_DIR = 'tmp_git'
 INSTRUCTION = {'load':'google'}  # valid instruction for convenience
+TAGS = ['useful', 'fun', 'interesting']
 
 class TestUsers(unittest.TestCase):
 
@@ -69,11 +70,11 @@ class TestInstructions(unittest.TestCase):
     def test_create_instruction(self):
         """Creating an instruction.
         """
-        doc = self.instructions.create(self.creator, 'google', INSTRUCTION)
+        doc = self.instructions.create(self.creator, 'google', INSTRUCTION, TAGS)
         self.assertIsNotNone(doc)
         self.assertEquals('google', doc.name)
-        self.assertEquals({'load':'google'}, doc.instruction)
-        self.assertEquals([], doc.tags)
+        self.assertEquals(INSTRUCTION, doc.instruction)
+        self.assertEquals(TAGS, doc.tags)
         doc.validate()
 
     def test_duplicate_names_ok(self):
@@ -83,21 +84,24 @@ class TestInstructions(unittest.TestCase):
         bobo = self.users.create('bobo')
 
         self.assertIsNotNone(self.instructions.create(joe, 'name',
-                                                      INSTRUCTION))
+                                                      INSTRUCTION,
+                                                      TAGS))
         self.assertIsNotNone(self.instructions.create(bobo, 'name',
-                                                      INSTRUCTION))
+                                                      INSTRUCTION,
+                                                      TAGS))
 
     def test_duplicate_creator_and_name_not_ok(self):
         """Duplicate names forbidden if the creator is the same.
         """
-        self.instructions.create(self.creator, 'name', INSTRUCTION)
+        self.instructions.create(self.creator, 'name', INSTRUCTION, TAGS)
         self.assertIsNone(self.instructions.create(self.creator, 'name',
-                                                   INSTRUCTION))
+                                                   INSTRUCTION,
+                                                   TAGS))
 
     def test_find_instruction(self):
         """Find an instruction.
         """
-        self.instructions.create(self.creator, 'google', INSTRUCTION)
+        self.instructions.create(self.creator, 'google', INSTRUCTION, TAGS)
         doc = self.instructions.find(self.creator.name, 'google')
         self.assertEqual('google', doc.name)
         self.assertEqual(INSTRUCTION, doc.instruction)
@@ -105,9 +109,9 @@ class TestInstructions(unittest.TestCase):
     def test_find_creator_instructions(self):
         """Find instructions created by a name.
         """
-        self.instructions.create(self.creator, 'foo', INSTRUCTION)
-        self.instructions.create(self.creator, 'bar', INSTRUCTION)
-        self.instructions.create(self.creator, 'baz', INSTRUCTION)
+        self.instructions.create(self.creator, 'foo', INSTRUCTION, TAGS)
+        self.instructions.create(self.creator, 'bar', INSTRUCTION, TAGS)
+        self.instructions.create(self.creator, 'baz', INSTRUCTION, TAGS)
         docs = self.instructions.for_creator(self.creator.name)
         self.assertEqual(3, len(docs))
         self.assertItemsEqual(['foo', 'bar', 'baz'], [d.name for d in docs])
@@ -115,14 +119,14 @@ class TestInstructions(unittest.TestCase):
     def test_save_instruction_tags(self):
         """Update the tags in an instruction.
         """
-        doc = self.instructions.create(self.creator, 'foo', INSTRUCTION)
+        doc = self.instructions.create(self.creator, 'foo', INSTRUCTION, TAGS)
         doc.tags = ['bar', 'baz']
         self.assertIsNone(self.instructions.save(doc))
 
     def test_bad_instruction(self):
         """Don't update bad instruction.
         """
-        doc = self.instructions.create(self.creator, 'foo', INSTRUCTION)
+        doc = self.instructions.create(self.creator, 'foo', INSTRUCTION, TAGS)
         for bad in [{'foo':'bar'}, 7]:
             doc.instruction = bad
             self.assertIsNotNone(self.instructions.save(doc))
@@ -130,25 +134,24 @@ class TestInstructions(unittest.TestCase):
     def test_valid_instructions(self):
         """Instructions come in all shapes & sizes.
         """
-        doc = self.instructions.create(self.creator, 'foo', INSTRUCTION)
+        doc = self.instructions.create(self.creator, 'foo', INSTRUCTION, TAGS)
         for valid in ['bare string', ['some', 'array'], {'load':'google'}]:
             doc.instruction = valid
             self.assertIsNone(self.instructions.save(doc))
 
     def test_bad_tags(self):
-        """Don't update with bad tags.
+        """Don't create with bad tags.
         """
-        doc = self.instructions.create(self.creator, 'foo', INSTRUCTION)
         for bad in [7, 'string', {}]:
-            doc.tags = bad
-            self.assertIsNotNone(self.instructions.save(doc))
+            doc = self.instructions.create(self.creator, 'foo', INSTRUCTION, bad)
+            self.assertIsNone(doc)
 
     def test_tagged_instructions(self):
         """ Get instructions by their tag.
         """
-        roses = self.instructions.create(self.creator, 'roses', INSTRUCTION)
-        violets = self.instructions.create(self.creator, 'violets', INSTRUCTION)
-        lilacs = self.instructions.create(self.creator, 'lilacs', INSTRUCTION)
+        roses = self.instructions.create(self.creator, 'roses', INSTRUCTION, TAGS)
+        violets = self.instructions.create(self.creator, 'violets', INSTRUCTION, TAGS)
+        lilacs = self.instructions.create(self.creator, 'lilacs', INSTRUCTION, TAGS)
 
         roses.tags = ['red', 'white']
         violets.tags = ['blue', 'purple']
@@ -164,9 +167,25 @@ class TestInstructions(unittest.TestCase):
     def test_delete(self):
         """Deleting eliminates, allows creation of new with same name.
         """
-        doomed = self.instructions.create(self.creator, 'doomed', INSTRUCTION)
+        doomed = self.instructions.create(self.creator, 'doomed', INSTRUCTION, TAGS)
         self.assertTrue(self.instructions.delete(doomed))
         self.assertFalse(self.instructions.delete(doomed))
-        dup = self.instructions.create(self.creator, 'doomed', INSTRUCTION)
+        dup = self.instructions.create(self.creator, 'doomed', INSTRUCTION, TAGS)
         self.assertIsNotNone(dup)
+
+    def test_save_or_create_create(self):
+        """Can create with save_or_create
+        """
+        self.instructions.save_or_create(self.creator, 'created', INSTRUCTION, TAGS)
+        self.assertIsNotNone(self.instructions.find(self.creator.name, 'created'))
+
+    def test_save_or_create_save(self):
+        """Can save with save_or_create
+        """
+        self.instructions.create(self.creator, 'saved', INSTRUCTION, TAGS)
+        self.instructions.save_or_create(
+            self.creator, 'saved', {'load': 'something else'}, ['foo'])
+        doc = self.instructions.find(self.creator.name, 'saved')
+        self.assertEqual({'load': 'something else'}, doc.instruction)
+        self.assertEqual(['foo'], doc.tags)
 

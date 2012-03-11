@@ -37,6 +37,12 @@ class TestServerJSON(unittest.TestCase):
             'action': 'logout'
         })
 
+    def assertJsonEqual(self, str1, str2):
+        """
+        Assert two JSON strings are equivalent.
+        """
+        self.assertEqual(json.loads(str1), json.loads(str2))
+
     def setUp(self):
         """
         Keep track of created accounts and session, make sure requests are for
@@ -52,7 +58,9 @@ class TestServerJSON(unittest.TestCase):
         for user in self.created_accounts:
             self._logout()
             self._login(user)
-            token = json.loads(self.s.delete("%s/%s" % (HOST, user)).content)['token']
+            r = self.s.delete("%s/%s" % (HOST, user))
+            self.assertEqual(200, r.status_code)
+            token = json.loads(r.content)['token']
             self.s.delete("%s/%s" % (HOST, user), data={'token': token})
 
     def test_signup(self):
@@ -136,9 +144,9 @@ class TestServerJSON(unittest.TestCase):
             'instruction': LOAD_GOOGLE
         })
 
-        r = self.s.get("%s/jacobs/instruction/life-n-death" % HOST)
+        r = self.s.get("%s/jacobs/instructions/life-n-death" % HOST)
         self.assertEqual(200, r.status_code)
-        self.assertEqual(LOAD_GOOGLE, r.content)
+        self.assertJsonEqual(LOAD_GOOGLE, r.content)
 
     def test_get_instruction_not_logged_in(self):
         """
@@ -152,7 +160,7 @@ class TestServerJSON(unittest.TestCase):
 
         r = self.s.get("%s/jacobs/instructions/life-n-death" % HOST)
         self.assertEqual(200, r.status_code)
-        self.assertEqual(LOAD_GOOGLE, r.content)
+        self.assertJsonEqual(LOAD_GOOGLE, r.content)
 
     def test_update_instruction_json(self):
         """
@@ -170,7 +178,7 @@ class TestServerJSON(unittest.TestCase):
 
         r = self.s.get("%s/moses/instructions/bqe" % HOST)
         self.assertEqual(200, r.status_code)
-        self.assertEqual(load_nytimes, r.content)
+        self.assertJsonEqual(load_nytimes, r.content)
 
     def test_get_instructions_by_tag(self):
         """
@@ -179,13 +187,13 @@ class TestServerJSON(unittest.TestCase):
         """
         self._signup('trog-dor')
         self.s.put("%s/trog-dor/instructions/pillaging" % HOST, data={
-            'instruction': LOAD_GOOGLE
+            'instruction': LOAD_GOOGLE,
+            'tags': '["burnination"]'
         })
         self.s.put("%s/trog-dor/instructions/burning" % HOST, data={
-            'instruction': LOAD_GOOGLE
+            'instruction': LOAD_GOOGLE,
+            'tags': '["burnination"]'
         })
-        self.s.put("%s/trog-dor/instructions/pillaging/tags/burnination" % HOST)
-        self.s.put("%s/trog-dor/instructions/burning/tags/burnination" % HOST)
 
         r = self.s.get("%s/trog-dor/tagged/burnination" % HOST)
         self.assertEqual(200, r.status_code)
@@ -238,7 +246,7 @@ class TestServerJSON(unittest.TestCase):
 
         r = self.s.get("%s/crapton/instructions/delta-blues" % HOST)
         self.assertEqual(200, r.status_code)
-        self.assertEqual(LOAD_GOOGLE, r.content)
+        self.assertJsonEqual(LOAD_GOOGLE, r.content)
 
         r = self.s.get("%s/crapton/tagged/guitar" % HOST)
         self.assertEqual(200, r.status_code)
@@ -277,4 +285,4 @@ class TestServerJSON(unittest.TestCase):
         self.assertEqual(204, r.status_code)
         r = self.s.get("%s/gilmour/saucerful" % HOST)
         self.assertEqual(200, r.status_code)
-        self.assertEqual('{"loads":"http://www.jugband.com/"}', r.content)
+        self.assertJsonEqual('{"load":"http://www.jugband.com/"}', r.content)
