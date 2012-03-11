@@ -42,6 +42,7 @@ class InstructionDocument(Document):
     An Instruction Document has not just the instruction, but also a name, tags,
     and a creator ID.
     """
+    id = ObjectIdField(id_field=True)
     creator_id = ObjectIdField(required=True)
     name = StringField(required=True)
     tags = ListField(StringField())
