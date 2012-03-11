@@ -26,7 +26,7 @@ if not len(PARSER.read('config.ini')):
         PARSER.set(mode, 'db_host', 'localhost')
         PARSER.set(mode, 'template_dir', './templates')
         PARSER.set(mode, 'cookie_secret', str(uuid.uuid4()))
-        PARSER.set(mode, 'json_git_dir', 'jsongit_%s' % mode)
+        PARSER.set(mode, 'json_git_dir', "%s.jsongit" % mode)
         PARSER.set(mode, 'recv_spec', 'ipc://caustic:1')
         PARSER.set(mode, 'send_spec', 'ipc://caustic:0')
 

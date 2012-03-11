@@ -3,6 +3,7 @@
 *.db
 *.swp
 *.sqlite
+*.ini
 run/*
-git/*
+*.jsongit/*
 log/*
