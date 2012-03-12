@@ -1,8 +1,10 @@
 #!/bin/bash
 
-m2sh load -config mongrel2.conf -db the.db
-m2sh start -db the.db -host localhost > log/mongrel.log 2>&1 &
+mkdir -p log
 
-mongod -f mongodb.conf > log/mongodb.log 2>&1 &
+m2sh load -config mongrel2.conf
+m2sh start -host localhost &
 
-python caustic/server.py > log/caustic.log 2>&1 &
+mongod -f mongodb.conf &
+
+#python caustic/server.py > log/caustic.log 2>&1 &

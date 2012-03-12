@@ -1,11 +1,13 @@
-'''TEMPORARY: persistence should be done in another way!
+#!usr/bin/env python
+
+'''
+This is a bootstrap loader for the basic openscrape instructions.
 '''
 
-from database import collection
-from models import Instruction
+HOST = 'http://localhost:7100'
+USER = 'openscrape'
 import json
-
-collection.drop()
+import requests
 
 instructions = [
     {
@@ -351,5 +353,23 @@ instructions = [
         }
     ]
 
-for instruction in instructions:
-    collection.save(Instruction(**instruction).to_python())
+
+s = requests.session(headers={'accept': 'application/json text/javascript'})
+r = s.post('%s/' % HOST, data={
+    'action':'signup',
+    'user':  USER
+})
+if r.status_code == 400:
+    r = s.post('%s/' % HOST, data={
+        'action':'login',
+        'user': USER
+    })
+
+assert r.status_code == 200, r.content
+
+for i in instructions:
+    r = s.put('%s/%s/instructions/%s' % (HOST, USER, i['name']), data = {
+        'instruction': json.dumps(i['json']),
+        'tags': json.dumps([str(e) for e in i.get('tags', [])])
+    })
+    assert r.status_code == 201, r.content
