@@ -25,7 +25,6 @@ class TestServerJSON(unittest.TestCase):
             'action': 'signup',
             'user'  : user
         })
-        #self.assertEqual(200, r.status_code, r.content)
         if r.status_code == 200:
             self.created_accounts.append(user)
         return r

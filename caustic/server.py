@@ -47,7 +47,7 @@ class Handler(MustacheRendering, UserHandlingMixin):
         cookie session.  Returns `None` if there is no current user.
         """
         id = self.get_cookie('session', None, self.application.cookie_secret)
-        return self.application.users.get(id)
+        return self.application.users.get(id) if id else None
 
     def set_current_user(self, user):
         """
@@ -72,13 +72,6 @@ class Handler(MustacheRendering, UserHandlingMixin):
 # HANDLERS
 #
 class IndexHandler(Handler):
-    def trace(self):
-        """
-        Trace provides ping-like functionality, letting clients
-        know whether the server is available.
-        """
-        return self.render(status_code=204)
-
     def post(self):
         """
         Logging in and out.
